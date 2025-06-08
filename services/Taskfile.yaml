@@ -1,0 +1,30 @@
+version: '3'
+
+includes:
+  discovery: ./discovery/Taskfile.yaml
+
+tasks:
+  build:
+    desc: Build all services
+    cmds:
+      - task: discovery:build
+
+  test:
+    desc: Test all services
+    cmds:
+      - task: discovery:test
+
+  lint:
+    desc: Lint all services
+    cmds:
+      - task: discovery:lint
+
+  format:
+    desc: Format all services
+    cmds:
+      - task: discovery:format
+
+  clean:
+    desc: Clean all services
+    cmds:
+      - task: discovery:clean

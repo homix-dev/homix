@@ -1,0 +1,146 @@
+esphome:
+  name: esp32-livingroom
+  friendly_name: Living Room Sensor
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API (optional, for fallback)
+api:
+  encryption:
+    key: "your-encryption-key-here"
+
+# OTA updates
+ota:
+  password: "your-ota-password"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot
+  ap:
+    ssid: "ESP32-Livingroom"
+    password: "fallback-password"
+
+captive_portal:
+
+# External components from GitHub
+external_components:
+  - source:
+      type: git
+      url: https://github.com/calmera/nats-home-automation
+      ref: main
+    components: [ nats_client, nats_sensor, nats_switch, nats_binary_sensor ]
+
+# NATS client configuration
+nats_client:
+  id: nats
+  server: "192.168.1.100"  # Your NATS server IP
+  port: 4222
+  username: "home"
+  password: "changeme"
+  device_id: "esp32-livingroom"
+  device_name: "Living Room Sensor"
+  device_type: "multi-sensor"
+  manufacturer: "DIY"
+  model: "ESP32-Multi"
+  reconnect_interval: 30s
+  status_interval: 60s
+
+# Example sensors
+sensor:
+  # DHT22 Temperature/Humidity sensor
+  - platform: dht
+    pin: GPIO23
+    temperature:
+      id: dht_temperature
+      name: "Temperature"
+    humidity:
+      id: dht_humidity
+      name: "Humidity"
+    update_interval: 30s
+
+  # Publish temperature to NATS
+  - platform: nats_sensor
+    name: "Temperature"
+    sensor_id: dht_temperature
+    subject_suffix: "temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    publish_interval: 60s
+
+  # Publish humidity to NATS
+  - platform: nats_sensor
+    name: "Humidity"
+    sensor_id: dht_humidity
+    subject_suffix: "humidity"
+    unit_of_measurement: "%"
+    device_class: humidity
+    state_class: measurement
+    accuracy_decimals: 0
+    publish_interval: 60s
+
+  # WiFi signal sensor
+  - platform: wifi_signal
+    id: wifi_rssi
+    name: "WiFi Signal"
+    update_interval: 60s
+
+  - platform: nats_sensor
+    name: "WiFi RSSI"
+    sensor_id: wifi_rssi
+    subject_suffix: "rssi"
+    unit_of_measurement: "dBm"
+    device_class: signal_strength
+    state_class: measurement
+    accuracy_decimals: 0
+    publish_interval: 300s  # Every 5 minutes
+
+# Binary sensors
+binary_sensor:
+  # PIR Motion sensor
+  - platform: gpio
+    pin:
+      number: GPIO27
+      mode: INPUT_PULLDOWN
+    id: pir_sensor
+    name: "Motion"
+    device_class: motion
+
+  # Publish motion to NATS
+  - platform: nats_binary_sensor
+    name: "Motion"
+    sensor_id: pir_sensor
+    subject_suffix: "motion"
+    device_class: motion
+
+# Switches
+switch:
+  # Relay control
+  - platform: nats_switch
+    name: "Relay 1"
+    subject_suffix: "relay1"
+    gpio_pin: GPIO32
+    icon: "mdi:light-switch"
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  - platform: nats_switch
+    name: "Relay 2"
+    subject_suffix: "relay2"
+    gpio_pin: GPIO33
+    icon: "mdi:light-switch"
+    restore_mode: RESTORE_DEFAULT_OFF
+
+# Status LED
+light:
+  - platform: status_led
+    name: "Status LED"
+    pin: GPIO2

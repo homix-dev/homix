@@ -1,0 +1,133 @@
+# Test configuration for all NATS components
+esphome:
+  name: test-nats-components
+  friendly_name: NATS Component Test
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API (optional)
+api:
+  encryption:
+    key: "test-encryption-key"
+
+# OTA updates
+ota:
+  password: "test-ota-password"
+
+wifi:
+  ssid: "test-ssid"
+  password: "test-password"
+
+  # Enable fallback hotspot
+  ap:
+    ssid: "ESP32-Test"
+    password: "fallback-password"
+
+# External components from local path
+external_components:
+  - source:
+      type: local
+      path: ../
+    components: [ nats_client, nats_sensor, nats_switch, nats_binary_sensor ]
+
+# NATS client configuration
+nats_client:
+  id: nats
+  server: "192.168.1.100"
+  port: 4222
+  username: "test"
+  password: "test123"
+  device_id: "test-device"
+  device_name: "Test Device"
+  device_type: "test"
+  manufacturer: "Test"
+  model: "Test-Model"
+  reconnect_interval: 10s
+  status_interval: 30s
+
+# Test sensors
+sensor:
+  # Internal temperature sensor
+  - platform: internal_temperature
+    id: cpu_temp
+    name: "CPU Temperature"
+    update_interval: 10s
+
+  # Publish CPU temperature to NATS
+  - platform: nats_sensor
+    name: "CPU Temperature NATS"
+    sensor_id: cpu_temp
+    subject_suffix: "cpu_temp"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    publish_interval: 30s
+
+  # WiFi signal sensor
+  - platform: wifi_signal
+    id: wifi_rssi
+    name: "WiFi Signal"
+    update_interval: 30s
+
+  - platform: nats_sensor
+    name: "WiFi RSSI NATS"
+    sensor_id: wifi_rssi
+    subject_suffix: "wifi_rssi"
+    unit_of_measurement: "dBm"
+    device_class: signal_strength
+    state_class: measurement
+    accuracy_decimals: 0
+    publish_interval: 60s
+
+# Test binary sensors
+binary_sensor:
+  # Status binary sensor
+  - platform: status
+    id: esp_status
+    name: "ESP Status"
+
+  # Publish status to NATS
+  - platform: nats_binary_sensor
+    name: "ESP Status NATS"
+    sensor_id: esp_status
+    subject_suffix: "status"
+    device_class: connectivity
+    publish_initial_state: true
+
+# Test switches
+switch:
+  # Test switch without GPIO (virtual)
+  - platform: nats_switch
+    name: "Virtual Switch 1"
+    subject_suffix: "virtual_switch_1"
+    optimistic: true
+    icon: "mdi:toggle-switch"
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  # Test switch with GPIO
+  - platform: nats_switch
+    name: "LED Switch"
+    subject_suffix: "led"
+    gpio_pin: GPIO2
+    optimistic: false
+    icon: "mdi:led-on"
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  # Restart switch
+  - platform: restart
+    id: restart_switch
+    name: "Restart"
+
+# Status LED
+light:
+  - platform: status_led
+    name: "Status LED"
+    pin: GPIO2

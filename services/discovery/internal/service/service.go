@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/calmera/nats-home-automation/services/discovery/internal/config"
@@ -273,11 +274,12 @@ func (s *Service) handleDiscoveryRequest(msg *nats.Msg) {
 // handleDeviceStatus processes device status updates
 func (s *Service) handleDeviceStatus(msg *nats.Msg) {
 	// Extract device ID from subject
-	tokens := nats.TokenizeSubject(msg.Subject)
-	if len(tokens) < 4 {
+	// Subject format: home.devices.{type}.{id}.status
+	parts := strings.Split(msg.Subject, ".")
+	if len(parts) < 4 {
 		return
 	}
-	deviceID := tokens[3]
+	deviceID := parts[3]
 
 	// Parse status
 	var status struct {
@@ -429,12 +431,13 @@ func (s *Service) respondError(msg *nats.Msg, errMsg string) {
 // handleConfigRequest handles device configuration get requests
 func (s *Service) handleConfigRequest(msg *nats.Msg) {
 	// Extract device ID from subject
-	tokens := nats.TokenizeSubject(msg.Subject)
-	if len(tokens) < 3 {
+	// Subject format: home.config.device.{id}
+	parts := strings.Split(msg.Subject, ".")
+	if len(parts) < 4 {
 		s.respondError(msg, "invalid subject format")
 		return
 	}
-	deviceID := tokens[2]
+	deviceID := parts[3]
 
 	// Get config
 	config, err := s.configMgr.GetDeviceConfig(deviceID)

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/calmera/nats-home-automation/services/discovery/internal/models"
-	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/sirupsen/logrus"
 )
@@ -216,7 +215,7 @@ func (r *Registry) Watch(ctx context.Context, callback func(device *models.Devic
 				operation := "update"
 				if kve.Operation() == jetstream.KeyValueDelete {
 					operation = "delete"
-				} else if kve.Created() == kve.Revision() {
+				} else if kve.Revision() == 1 {
 					operation = "create"
 				}
 

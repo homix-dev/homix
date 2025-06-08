@@ -23,24 +23,58 @@ tasks:
     cmds:
       - task: infra:setup
       - task: install-deps
-      - task: infra:start
-      - echo "Setup complete! NATS server running on localhost:4222"
+      - echo "Setup complete! Run 'task infra:start-dev' to start NATS in development mode"
+      - echo "Or 'task infra:start' for production mode with Synadia Cloud"
+
+  setup-dev:
+    desc: Setup and start in development mode
+    cmds:
+      - task: infra:setup
+      - task: install-deps
+      - task: infra:start-dev
+      - echo "Development setup complete! NATS server running on localhost:4222"
+
+  setup-minimal:
+    desc: Minimal setup - just NATS infrastructure
+    cmds:
+      - task: infra:setup
+      - task: infra:start-dev
+      - |
+        echo "Minimal setup complete! NATS server running on localhost:4222"
+        echo "Connection details: nats://home:changeme@localhost:4222"
+        echo ""
+        echo "To install additional dependencies later:"
+        echo "  - NATS CLI: go install github.com/nats-io/natscli/nats@latest"
+        echo "  - Python deps: pip3 install nats-py"
+        echo "  - ESPHome: pip3 install esphome"
 
   install-deps:
     desc: Install all project dependencies
     cmds:
       - echo "Installing NATS CLI..."
-      - go install github.com/nats-io/natscli/nats@latest
+      - go install github.com/nats-io/natscli/nats@latest || echo "Warning - Failed to install NATS CLI. Please install Go first."
       - echo "Installing Go dependencies..."
-      - cd services && go mod download
-      - cd tools && go mod download
-      - echo "Installing Python dependencies..."
-      - pip install nats-py esphome
+      - cd services/discovery && go mod download || echo "Warning - Failed to download Go dependencies"
+      - cd tools/nats-ha-cli && go mod download || echo "Warning - Failed to download Go dependencies"
+      - task: install-python-deps
 
   start:
     desc: Start all services
-    deps: [infra:start]
     cmds:
+      - task: infra:start-dev
+      - task: services:discovery:run
+
+  dev:
+    desc: Run in development mode with all services
+    cmds:
+      - task: infra:start-dev
+      - echo "Starting discovery service..."
+      - task: services:discovery:run
+
+  start-prod:
+    desc: Start all services in production mode
+    cmds:
+      - task: infra:start
       - task: services:discovery:run
 
   stop:
@@ -71,6 +105,20 @@ tasks:
       - find . -name "*.pyc" -delete
       - find . -name "__pycache__" -type d -exec rm -rf {} +
       - find . -name ".esphome" -type d -exec rm -rf {} +
+
+  clean-all:
+    desc: Deep clean - remove all artifacts, logs, and generated files
+    cmds:
+      - task: clean
+      - find . -name "*.log" -type f -delete
+      - find . -name "coverage.out" -type f -delete
+      - find . -name "coverage.html" -type f -delete
+      - find . -name "*.tmp" -type f -delete
+      - find . -name "*.bak" -type f -delete
+      - find . -name ".task" -type d -exec rm -rf {} +
+      - rm -rf infrastructure/data/nats-server.log
+      - rm -rf infrastructure/nats-data
+      - echo "[OK] Deep clean complete"
 
   lint:
     desc: Run linters for all components
@@ -127,3 +175,119 @@ tasks:
     desc: List device configurations
     cmds:
       - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} kv get device-configs --all
+
+  validate:
+    desc: Validate all task files
+    cmds:
+      - echo "Validating Taskfiles..."
+      - task --list-all > /dev/null && echo "✅ All Taskfiles are valid" || echo "❌ Taskfile validation failed"
+
+  test-nats:
+    desc: Test NATS messaging
+    vars:
+      NATS_CMD: 'nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}}'
+    cmds:
+      - echo "Testing NATS messaging..."
+      - echo "Publishing test message..."
+      - '{{.NATS_CMD}} pub home.test.message "Hello NATS"'
+      - echo "Test complete - check 'task monitor' output to see the message"
+
+  install-python-deps:
+    desc: Install Python dependencies
+    cmds:
+      - |
+        echo "Installing Python dependencies..."
+        if command -v pip3 >/dev/null 2>&1; then
+          echo "Using pip3..."
+          pip3 install --user nats-py || pip3 install --break-system-packages nats-py
+          echo "Note - ESPHome requires additional setup. Install with - pip3 install --user esphome"
+        elif command -v pip >/dev/null 2>&1; then
+          echo "Using pip..."
+          pip install --user nats-py || pip install --break-system-packages nats-py
+          echo "Note - ESPHome requires additional setup. Install with - pip install --user esphome"
+        else
+          echo "⚠️  Python pip not found. Please install Python 3 and pip."
+          echo "   On macOS - brew install python3"
+          echo "   On Ubuntu/Debian - sudo apt install python3-pip"
+          echo "   On Fedora - sudo dnf install python3-pip"
+          echo ""
+          echo "After installing pip, run - pip3 install nats-py esphome"
+        fi
+
+  check-deps:
+    desc: Check installed dependencies
+    cmds:
+      - |
+        echo "Checking dependencies..."
+        echo ""
+        echo "Container tool:"
+        if command -v docker >/dev/null 2>&1; then
+          echo "  ✅ Docker: $(docker --version)"
+        else
+          echo "  ❌ Docker: not found"
+        fi
+        if command -v podman >/dev/null 2>&1; then
+          echo "  ✅ Podman: $(podman --version)"
+        else
+          echo "  ❌ Podman: not found"
+        fi
+        echo ""
+        echo "Go:"
+        if command -v go >/dev/null 2>&1; then
+          echo "  ✅ Go: $(go version)"
+        else
+          echo "  ❌ Go: not found (needed for services)"
+        fi
+        echo ""
+        echo "Python:"
+        if command -v python3 >/dev/null 2>&1; then
+          echo "  ✅ Python3: $(python3 --version)"
+        else
+          echo "  ❌ Python3: not found"
+        fi
+        if command -v pip3 >/dev/null 2>&1; then
+          echo "  ✅ pip3: found"
+        else
+          echo "  ❌ pip3: not found"
+        fi
+        if command -v pip >/dev/null 2>&1; then
+          echo "  ✅ pip: found"
+        else
+          echo "  ❌ pip: not found"
+        fi
+        echo ""
+        echo "NATS CLI:"
+        if command -v nats >/dev/null 2>&1; then
+          echo "  ✅ NATS CLI: $(nats --version)"
+        else
+          echo "  ❌ NATS CLI: not found (install with - go install github.com/nats-io/natscli/nats@latest)"
+        fi
+
+  install:
+    desc: Install all binaries to /usr/local/bin
+    cmds:
+      - echo "Installing NATS Home Automation binaries..."
+      - task: services:discovery:install
+      - task: tools:cli:install
+      - echo ""
+      - echo "✅ Installation complete!"
+      - echo ""
+      - echo "Installed binaries:"
+      - 'echo "  - discovery-service: Device discovery and registry service"'
+      - 'echo "  - nats-ha: CLI tool for managing NATS home automation"'
+      - echo ""
+      - echo "To run the discovery service:"
+      - echo "  discovery-service"
+      - echo ""
+      - echo "To use the CLI:"
+      - echo "  nats-ha --help"
+      - echo "  nats-ha device list"
+      - echo "  nats-ha tui"
+
+  uninstall:
+    desc: Uninstall all binaries from /usr/local/bin
+    cmds:
+      - echo "Uninstalling NATS Home Automation binaries..."
+      - task: services:discovery:uninstall
+      - task: tools:cli:uninstall
+      - echo "✅ Uninstallation complete!"

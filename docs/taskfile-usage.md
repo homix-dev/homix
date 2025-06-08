@@ -21,10 +21,16 @@ scoop install task
 # Show all available tasks
 task --list
 
-# Initial setup
-task setup
+# Check dependencies
+task check-deps
 
-# Start NATS and services
+# Initial setup for development
+task setup-dev
+
+# Run everything in development mode
+task dev
+
+# Or start services manually
 task start
 
 # Run tests
@@ -32,6 +38,9 @@ task test
 
 # Build everything
 task build
+
+# Clean all artifacts
+task clean-all
 ```
 
 ## Common Tasks
@@ -39,7 +48,10 @@ task build
 ### Infrastructure
 
 ```bash
-# Start NATS server
+# Start NATS server (development mode - no Synadia Cloud)
+task infra:start-dev
+
+# Start NATS server (production mode - with Synadia Cloud)
 task infra:start
 
 # Stop NATS server
@@ -47,6 +59,9 @@ task infra:stop
 
 # View NATS logs
 task infra:logs
+
+# Test NATS connection
+task infra:test-connection
 
 # Create JetStream streams
 task infra:create-streams
@@ -65,7 +80,7 @@ task services:discovery:dev
 task tools:cli:run -- device list
 
 # Run TUI interface
-task tools:cli:run-tui
+task tools:tui:run
 
 # Monitor all NATS messages
 task monitor

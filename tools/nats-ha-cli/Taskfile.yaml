@@ -13,6 +13,7 @@ vars:
 tasks:
   build:
     desc: Build CLI tool
+    dir: tools/nats-ha-cli
     sources:
       - '**/*.go'
       - go.mod
@@ -67,14 +68,35 @@ tasks:
       - ./bin/{{.APP_NAME}} tui
 
   install:
-    desc: Install CLI globally
+    desc: Install CLI to /usr/local/bin
+    deps: [build]
+    dir: tools/nats-ha-cli
+    cmds:
+      - |
+        echo "Installing {{.APP_NAME}} to /usr/local/bin..."
+        sudo cp bin/{{.APP_NAME}} /usr/local/bin/
+        sudo chmod +x /usr/local/bin/{{.APP_NAME}}
+        echo "✅ Installed {{.APP_NAME}} to /usr/local/bin/"
+        echo "You can now run: {{.APP_NAME}}"
+
+  install-gopath:
+    desc: Install CLI to GOPATH
     deps: [build]
     cmds:
       - go install -ldflags="{{.LDFLAGS}}" .
       - echo "Installed {{.APP_NAME}} to $(go env GOPATH)/bin"
 
+  uninstall:
+    desc: Uninstall CLI from /usr/local/bin
+    cmds:
+      - |
+        echo "Uninstalling {{.APP_NAME}} from /usr/local/bin..."
+        sudo rm -f /usr/local/bin/{{.APP_NAME}}
+        echo "✅ Uninstalled {{.APP_NAME}}"
+
   test:
     desc: Run tests
+    dir: tools/nats-ha-cli
     cmds:
       - go test -v -race -coverprofile=coverage.out ./...
       - go tool cover -html=coverage.out -o coverage.html
@@ -140,6 +162,73 @@ tasks:
     deps: [build]
     cmds:
       - ./bin/{{.APP_NAME}} device monitor
+
+  test-cli:
+    desc: Test CLI commands
+    deps: [build]
+    cmds:
+      - echo "Testing NATS HA CLI..."
+      - echo ""
+      - echo "1. Testing device list:"
+      - ./bin/{{.APP_NAME}} device list --server nats://localhost:4222 --user home --password changeme
+      - echo ""
+      - echo "2. Testing config list:"
+      - ./bin/{{.APP_NAME}} config list --server nats://localhost:4222 --user home --password changeme
+      - echo ""
+      - echo "3. To test the TUI, run:"
+      - echo "   task run-tui"
+      - echo ""
+      - echo "   TUI Navigation:"
+      - echo "   - Use arrow keys (↑/↓) to navigate"
+      - echo "   - Press Enter or Space to select"
+      - echo "   - Press 'q' to quit from main menu"
+      - echo "   - Press Esc to go back"
+
+  demo:
+    desc: Run CLI demo showing various features
+    deps: [build]
+    vars:
+      SERVER: '{{default "nats://localhost:4222" .NATS_SERVER}}'
+      USER: '{{default "home" .NATS_USER}}'
+      PASSWORD: '{{default "changeme" .NATS_PASSWORD}}'
+    cmds:
+      - echo "NATS Home Automation CLI Demo"
+      - echo "============================="
+      - echo ""
+      - echo "=== 1. Device Management ==="
+      - echo ""
+      - echo "$ {{.APP_NAME}} device list"
+      - ./bin/{{.APP_NAME}} device list --server {{.SERVER}} --user {{.USER}} --password {{.PASSWORD}}
+      - echo ""
+      - echo "$ {{.APP_NAME}} device list --type sensor --online"
+      - ./bin/{{.APP_NAME}} device list --type sensor --online --server {{.SERVER}} --user {{.USER}} --password {{.PASSWORD}}
+      - echo ""
+      - echo "=== 2. Configuration Management ==="
+      - echo ""
+      - echo "$ {{.APP_NAME}} config list"
+      - ./bin/{{.APP_NAME}} config list --server {{.SERVER}} --user {{.USER}} --password {{.PASSWORD}}
+      - echo ""
+      - echo "=== 3. Real-time Monitoring ==="
+      - echo ""
+      - echo "To watch real-time state changes:"
+      - echo "  {{.APP_NAME}} watch states"
+      - echo ""
+      - echo "To watch specific device type:"
+      - echo "  {{.APP_NAME}} watch states sensor"
+      - echo ""
+      - echo "To watch system events:"
+      - echo "  {{.APP_NAME}} watch events"
+      - echo ""
+      - echo "=== 4. TUI Mode ==="
+      - echo ""
+      - echo "To launch the interactive Terminal UI:"
+      - echo "  {{.APP_NAME}} tui"
+      - echo ""
+      - echo "=== Demo Complete ==="
+      - echo ""
+      - echo "For more information:"
+      - echo "  - Run '{{.APP_NAME}} --help' for all commands"
+      - echo "  - Run '{{.APP_NAME}} <command> --help' for command-specific help"
 
   # Tool installation
   install-golangci-lint:

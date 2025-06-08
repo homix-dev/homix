@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   nats:
     image: nats:2.11
@@ -9,7 +11,30 @@ services:
     volumes:
       - ./cert.pem:/etc/ssl/cert.pem:ro
       - ./nats-home-automation.creds:/etc/nats/nats-home-automation.creds:ro
-      - ./nats-server.conf:/etc/nats/nats-server.conf
-      - ./nats-data:/data
-    command: ["-c", "/etc/nats/nats-server.conf"]
+      - ./nats-server.conf:/etc/nats/nats-server.conf:ro
+      - ./nats-server-dev.conf:/etc/nats/nats-server-dev.conf:ro
+      - ./nats-server-hybrid.conf:/etc/nats/nats-server-hybrid.conf:ro
+      - ./data:/data
+    # Use NATS_CONFIG env var to specify config file, default to main config
+    command: ["-c", "/etc/nats/${NATS_CONFIG:-nats-server.conf}"]
+    environment:
+      - NATS_CONFIG=${NATS_CONFIG:-nats-server.conf}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: NATS Box for debugging and testing
+  nats-box:
+    image: natsio/nats-box:latest
+    container_name: nats-box
+    depends_on:
+      - nats
+    command: sleep infinity
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+    profiles:
+      - debug

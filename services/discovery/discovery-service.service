@@ -1,0 +1,28 @@
+[Unit]
+Description=NATS Home Automation Discovery Service
+Documentation=https://github.com/yourusername/nats-home-automation
+After=network.target
+
+[Service]
+Type=simple
+User=nats
+Group=nats
+Environment="NATS_URL=nats://localhost:4222"
+Environment="NATS_USER=home"
+Environment="NATS_PASSWORD=changeme"
+ExecStart=/usr/local/bin/discovery-service
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=discovery-service
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/nats-discovery
+
+[Install]
+WantedBy=multi-user.target

@@ -13,25 +13,30 @@ This guide will help you test the discovery service and configuration management
 ### 1. Start NATS Server
 
 ```bash
-cd ../../infrastructure
-./setup-local-nats.sh
+# From project root
+task infra:start-dev
 ```
 
 ### 2. Build and Run Discovery Service
 
 In terminal 1:
 ```bash
-cd services/discovery
-go build
-./discovery --debug
+# From project root
+task services:discovery:run
+
+# Or with hot reload for development
+task services:discovery:dev
 ```
 
 ### 3. Run Automated Tests
 
 In terminal 2:
 ```bash
-cd services/discovery
-./test-service.sh
+# Run unit tests
+task services:discovery:test
+
+# Run integration tests (requires NATS server running)
+task services:discovery:test-integration
 ```
 
 This will run a comprehensive test suite covering:
@@ -119,16 +124,16 @@ nats request home.services.config.command '{
 
 ### Test with Multiple Devices
 
-Run the example scripts:
+Run the example patterns:
 ```bash
-cd ../../infrastructure/examples
+# From project root
+cd infrastructure/examples
 
 # Test basic patterns
-python messaging-patterns.py
-
-# Test configuration
-./config-examples.sh
+python3 messaging-patterns.py
 ```
+
+For more examples, see the [NATS CLI Examples](../../docs/nats-cli-examples.md) documentation.
 
 ## Debugging
 

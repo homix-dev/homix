@@ -1,0 +1,60 @@
+version: '3'
+
+vars:
+  PYTHON_CMD: '{{default "python3" .PYTHON_CMD}}'
+
+tasks:
+  default:
+    desc: List available bridge tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Setup bridges environment
+    cmds:
+      - '{{.PYTHON_CMD}} -m venv venv'
+      - ./venv/bin/pip install -r requirements.txt
+
+  mqtt-bridge:
+    desc: Run MQTT to NATS bridge
+    cmds:
+      - '{{.PYTHON_CMD}} mqtt-nats-bridge/main.py'
+
+  test:
+    desc: Run bridge tests
+    cmds:
+      - '{{.PYTHON_CMD}} -m pytest tests/ -v'
+
+  lint:
+    desc: Lint Python code
+    cmds:
+      - '{{.PYTHON_CMD}} -m pylint mqtt-nats-bridge/'
+      - '{{.PYTHON_CMD}} -m black --check .'
+
+  format:
+    desc: Format Python code
+    cmds:
+      - '{{.PYTHON_CMD}} -m black .'
+
+  clean:
+    desc: Clean Python artifacts
+    cmds:
+      - find . -name "*.pyc" -delete
+      - find . -name "__pycache__" -type d -exec rm -rf {} +
+      - rm -rf .pytest_cache
+      - rm -rf *.egg-info
+
+  docker-build:
+    desc: Build bridge Docker images
+    cmds:
+      - docker build -t nats-mqtt-bridge:latest mqtt-nats-bridge/
+
+  docker-run:
+    desc: Run MQTT bridge in Docker
+    cmds:
+      - |
+        docker run --rm \
+          -e NATS_URL=nats://host.docker.internal:4222 \
+          -e MQTT_BROKER=host.docker.internal \
+          --name nats-mqtt-bridge \
+          nats-mqtt-bridge:latest

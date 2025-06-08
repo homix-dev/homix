@@ -1,0 +1,176 @@
+version: '3'
+
+vars:
+  ESPHOME_CMD: '{{default "esphome" .ESPHOME_CMD}}'
+  TEST_CONFIG: examples/test-all-components.yaml
+
+tasks:
+  validate:
+    desc: Validate ESPHome configurations
+    cmds:
+      - '{{.ESPHOME_CMD}} config {{.TEST_CONFIG}}'
+
+  validate-all:
+    desc: Validate all example configurations
+    cmds:
+      - |
+        for config in examples/*.yaml; do
+          echo "Validating $config..."
+          {{.ESPHOME_CMD}} config "$config" || exit 1
+        done
+
+  compile:
+    desc: Compile test configuration (dry run)
+    cmds:
+      - '{{.ESPHOME_CMD}} compile {{.TEST_CONFIG}}'
+
+  lint:
+    desc: Lint Python component files
+    cmds:
+      - |
+        if command -v pylint >/dev/null 2>&1; then
+          find components -name "*.py" -exec pylint {} \;
+        else
+          echo "pylint not installed, skipping..."
+        fi
+      - |
+        if command -v black >/dev/null 2>&1; then
+          black --check components/
+        else
+          echo "black not installed, skipping..."
+        fi
+
+  format:
+    desc: Format Python component files
+    cmds:
+      - |
+        if command -v black >/dev/null 2>&1; then
+          black components/
+        else
+          echo "black not installed, run: pip install black"
+        fi
+
+  test-component:
+    desc: Test a specific component
+    vars:
+      COMPONENT: '{{default "nats_client" .COMPONENT}}'
+    cmds:
+      - |
+        cat > /tmp/test-{{.COMPONENT}}.yaml << EOF
+        esphome:
+          name: test-{{.COMPONENT}}
+        
+        esp32:
+          board: esp32dev
+        
+        external_components:
+          - source:
+              type: local
+              path: .
+            components: [ {{.COMPONENT}} ]
+        
+        # Add minimal config for component
+        {{.COMPONENT}}:
+          server: "192.168.1.1"
+        EOF
+      - '{{.ESPHOME_CMD}} config /tmp/test-{{.COMPONENT}}.yaml'
+
+  docs:
+    desc: Generate component documentation
+    cmds:
+      - |
+        echo "# ESPHome NATS Components API Documentation" > docs/components-api.md
+        echo "" >> docs/components-api.md
+        for component in components/*/; do
+          name=$(basename "$component")
+          echo "## $name" >> docs/components-api.md
+          echo "" >> docs/components-api.md
+          if [ -f "$component/__init__.py" ]; then
+            grep -A 20 "CONFIG_SCHEMA" "$component/__init__.py" >> docs/components-api.md || true
+          fi
+          if [ -f "$component/sensor.py" ]; then
+            grep -A 20 "CONFIG_SCHEMA" "$component/sensor.py" >> docs/components-api.md || true
+          fi
+          echo "" >> docs/components-api.md
+        done
+
+  clean:
+    desc: Clean ESPHome build artifacts
+    cmds:
+      - rm -rf .esphome/
+      - rm -rf examples/.esphome/
+      - find . -name "__pycache__" -type d -exec rm -rf {} +
+      - find . -name "*.pyc" -delete
+
+  # Development helpers
+  dev-server:
+    desc: Start ESPHome dashboard
+    cmds:
+      - '{{.ESPHOME_CMD}} dashboard examples/'
+
+  create-component:
+    desc: Create a new component skeleton
+    vars:
+      NAME: '{{.NAME}}'
+      TYPE: '{{default "sensor" .TYPE}}'
+    cmds:
+      - |
+        if [ -z "{{.NAME}}" ]; then
+          echo "Please specify NAME=<component_name>"
+          exit 1
+        fi
+      - mkdir -p components/{{.NAME}}
+      - touch components/{{.NAME}}/__init__.py
+      - |
+        cat > components/{{.NAME}}/{{.TYPE}}.py << EOF
+        import esphome.codegen as cg
+        import esphome.config_validation as cv
+        from esphome.components import {{.TYPE}}
+        from esphome.const import CONF_ID
+        from ..nats_client import nats_ns, NATSClient
+        
+        DEPENDENCIES = ["nats_client"]
+        
+        # Define your component class
+        {{.NAME}}{{.TYPE | title}} = nats_ns.class_("{{.NAME}}{{.TYPE | title}}", {{.TYPE}}.{{.TYPE | title}}, cg.Component)
+        
+        CONFIG_SCHEMA = {{.TYPE}}.{{.TYPE | upper}}_SCHEMA.extend({
+            cv.GenerateID(): cv.declare_id({{.NAME}}{{.TYPE | title}}),
+        }).extend(cv.COMPONENT_SCHEMA)
+        
+        async def to_code(config):
+            var = cg.new_Pvariable(config[CONF_ID])
+            await cg.register_component(var, config)
+            await {{.TYPE}}.register_{{.TYPE}}(var, config)
+        EOF
+      - echo "Component skeleton created at components/{{.NAME}}"
+
+  install-deps:
+    desc: Install Python dependencies for development
+    cmds:
+      - pip install esphome black pylint
+
+  # Testing with actual hardware
+  upload:
+    desc: Upload to ESP device
+    vars:
+      DEVICE: '{{default "/dev/ttyUSB0" .DEVICE}}'
+      CONFIG: '{{default "examples/esp32-sensor.yaml" .CONFIG}}'
+    cmds:
+      - '{{.ESPHOME_CMD}} upload {{.CONFIG}} --device {{.DEVICE}}'
+
+  logs:
+    desc: View ESP device logs
+    vars:
+      DEVICE: '{{default "/dev/ttyUSB0" .DEVICE}}'
+      CONFIG: '{{default "examples/esp32-sensor.yaml" .CONFIG}}'
+    cmds:
+      - '{{.ESPHOME_CMD}} logs {{.CONFIG}} --device {{.DEVICE}}'
+
+  monitor:
+    desc: Upload and monitor ESP device
+    vars:
+      DEVICE: '{{default "/dev/ttyUSB0" .DEVICE}}'
+      CONFIG: '{{default "examples/esp32-sensor.yaml" .CONFIG}}'
+    cmds:
+      - '{{.ESPHOME_CMD}} run {{.CONFIG}} --device {{.DEVICE}}'

@@ -1,0 +1,135 @@
+version: '3'
+
+vars:
+  COMPOSE_FILE: docker-compose.yaml
+  NATS_CONFIG: nats-server.conf
+  CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
+
+tasks:
+  setup:
+    desc: Setup infrastructure prerequisites
+    cmds:
+      - echo "Checking container tool..."
+      - '{{.CONTAINER_TOOL}} --version'
+      - echo "Creating data directories..."
+      - mkdir -p data/nats/jetstream
+      - mkdir -p data/nats/certs
+      - task: generate-certs
+
+  start:
+    desc: Start NATS server
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} up -d'
+      - echo "Waiting for NATS to be ready..."
+      - sleep 3
+      - task: health-check
+
+  stop:
+    desc: Stop NATS server
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} down'
+
+  restart:
+    desc: Restart NATS server
+    cmds:
+      - task: stop
+      - task: start
+
+  logs:
+    desc: Show NATS server logs
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} logs -f'
+
+  health-check:
+    desc: Check NATS server health
+    cmds:
+      - nats --server=nats://localhost:4222 --user=home --password=changeme server check connection
+
+  generate-certs:
+    desc: Generate self-signed certificates for NATS
+    cmds:
+      - |
+        if [ ! -f data/nats/certs/server.crt ]; then
+          echo "Generating self-signed certificates..."
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout data/nats/certs/server.key \
+            -out data/nats/certs/server.crt \
+            -subj "/C=US/ST=State/L=City/O=Home/CN=nats.local"
+        else
+          echo "Certificates already exist"
+        fi
+
+  backup:
+    desc: Backup JetStream data
+    vars:
+      BACKUP_FILE: 'nats-backup-{{now | date "2006-01-02-150405"}}.tar.gz'
+    cmds:
+      - echo "Creating backup {{.BACKUP_FILE}}..."
+      - tar -czf {{.BACKUP_FILE}} data/nats/jetstream
+      - echo "Backup created: {{.BACKUP_FILE}}"
+
+  restore:
+    desc: Restore JetStream data from backup
+    vars:
+      BACKUP_FILE: '{{.BACKUP_FILE}}'
+    cmds:
+      - |
+        if [ -z "{{.BACKUP_FILE}}" ]; then
+          echo "Please specify BACKUP_FILE=<filename>"
+          exit 1
+        fi
+      - echo "Restoring from {{.BACKUP_FILE}}..."
+      - task: stop
+      - rm -rf data/nats/jetstream
+      - tar -xzf {{.BACKUP_FILE}}
+      - task: start
+
+  clean:
+    desc: Clean all data (WARNING: Destructive!)
+    prompt: This will delete all NATS data. Are you sure?
+    cmds:
+      - task: stop
+      - rm -rf data/nats/jetstream/*
+      - echo "All data cleaned"
+
+  shell:
+    desc: Open shell in NATS container
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} exec nats sh'
+
+  bench:
+    desc: Run NATS benchmark
+    cmds:
+      - nats --server=nats://localhost:4222 --user=home --password=changeme bench test --msgs=10000 --size=256
+
+  # JetStream management
+  js-info:
+    desc: Show JetStream info
+    cmds:
+      - nats --server=nats://localhost:4222 --user=home --password=changeme stream ls
+      - nats --server=nats://localhost:4222 --user=home --password=changeme consumer ls
+
+  create-streams:
+    desc: Create JetStream streams for home automation
+    cmds:
+      - |
+        nats --server=nats://localhost:4222 --user=home --password=changeme \
+          stream add HOME_EVENTS \
+          --subjects="home.devices.>" \
+          --storage=file \
+          --retention=limits \
+          --max-age=7d \
+          --max-msgs=-1 \
+          --max-bytes=-1 \
+          --dupe-window=1m \
+          --no-allow-rollup \
+          --discard=old
+      - |
+        nats --server=nats://localhost:4222 --user=home --password=changeme \
+          stream add HOME_DISCOVERY \
+          --subjects="home.discovery.>" \
+          --storage=file \
+          --retention=limits \
+          --max-age=1d \
+          --max-msgs=1000 \
+          --discard=old

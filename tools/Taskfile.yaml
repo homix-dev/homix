@@ -1,0 +1,35 @@
+version: '3'
+
+includes:
+  cli: ./nats-ha-cli/Taskfile.yaml
+
+tasks:
+  build:
+    desc: Build all tools
+    cmds:
+      - task: cli:build
+
+  test:
+    desc: Test all tools
+    cmds:
+      - task: cli:test
+
+  lint:
+    desc: Lint all tools
+    cmds:
+      - task: cli:lint
+
+  format:
+    desc: Format all tools
+    cmds:
+      - task: cli:format
+
+  clean:
+    desc: Clean all tools
+    cmds:
+      - task: cli:clean
+
+  install:
+    desc: Install all tools
+    cmds:
+      - task: cli:install

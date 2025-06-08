@@ -1,0 +1,148 @@
+version: '3'
+
+vars:
+  APP_NAME: discovery-service
+  GO_FILES: 
+    sh: find . -name '*.go' -not -path './vendor/*'
+  NATS_SERVER: '{{default "nats://localhost:4222" .NATS_SERVER}}'
+  NATS_USER: '{{default "home" .NATS_USER}}'
+  NATS_PASS: '{{default "changeme" .NATS_PASS}}'
+
+tasks:
+  build:
+    desc: Build discovery service
+    sources:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+    generates:
+      - bin/{{.APP_NAME}}
+    cmds:
+      - go build -o bin/{{.APP_NAME}} ./cmd/discovery
+
+  run:
+    desc: Run discovery service
+    deps: [build]
+    env:
+      NATS_URL: '{{.NATS_SERVER}}'
+      NATS_USER: '{{.NATS_USER}}'
+      NATS_PASSWORD: '{{.NATS_PASS}}'
+    cmds:
+      - ./bin/{{.APP_NAME}}
+
+  dev:
+    desc: Run service with hot reload
+    deps: [install-air]
+    env:
+      NATS_URL: '{{.NATS_SERVER}}'
+      NATS_USER: '{{.NATS_USER}}'
+      NATS_PASSWORD: '{{.NATS_PASS}}'
+    cmds:
+      - air
+
+  test:
+    desc: Run tests
+    env:
+      NATS_URL: '{{.NATS_SERVER}}'
+      NATS_USER: '{{.NATS_USER}}'
+      NATS_PASSWORD: '{{.NATS_PASS}}'
+    cmds:
+      - go test -v -race -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
+
+  test-watch:
+    desc: Run tests in watch mode
+    deps: [install-gotestsum]
+    cmds:
+      - gotestsum --watch -- -v -race ./...
+
+  bench:
+    desc: Run benchmarks
+    cmds:
+      - go test -bench=. -benchmem ./...
+
+  lint:
+    desc: Run linters
+    deps: [install-golangci-lint]
+    cmds:
+      - golangci-lint run ./...
+
+  format:
+    desc: Format code
+    cmds:
+      - go fmt ./...
+      - go mod tidy
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf bin/
+      - rm -f coverage.out coverage.html
+
+  deps:
+    desc: Download dependencies
+    cmds:
+      - go mod download
+      - go mod verify
+
+  update-deps:
+    desc: Update dependencies
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+
+  docker-build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t {{.APP_NAME}}:latest .
+
+  docker-run:
+    desc: Run in Docker
+    deps: [docker-build]
+    cmds:
+      - |
+        docker run --rm \
+          -e NATS_URL={{.NATS_SERVER}} \
+          -e NATS_USER={{.NATS_USER}} \
+          -e NATS_PASSWORD={{.NATS_PASS}} \
+          --network host \
+          {{.APP_NAME}}:latest
+
+  # Tool installation tasks
+  install-air:
+    desc: Install air for hot reload
+    cmds:
+      - go install github.com/cosmtrek/air@latest
+    status:
+      - which air
+
+  install-gotestsum:
+    desc: Install gotestsum for better test output
+    cmds:
+      - go install gotest.tools/gotestsum@latest
+    status:
+      - which gotestsum
+
+  install-golangci-lint:
+    desc: Install golangci-lint
+    cmds:
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    status:
+      - which golangci-lint
+
+  # Development helpers
+  generate:
+    desc: Run go generate
+    cmds:
+      - go generate ./...
+
+  mod-graph:
+    desc: Show module dependency graph
+    cmds:
+      - go mod graph
+
+  coverage-report:
+    desc: Generate and open coverage report
+    deps: [test]
+    cmds:
+      - open coverage.html || xdg-open coverage.html

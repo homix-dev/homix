@@ -1,0 +1,129 @@
+version: '3'
+
+vars:
+  NATS_SERVER: "nats://localhost:4222"
+  NATS_USER: "home"
+  NATS_PASS: "changeme"
+
+includes:
+  services: ./services/Taskfile.yaml
+  tools: ./tools/Taskfile.yaml
+  bridges: ./bridges/Taskfile.yaml
+  esphome: ./esphome-components/Taskfile.yaml
+  infra: ./infrastructure/Taskfile.yaml
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Initial project setup
+    cmds:
+      - task: infra:setup
+      - task: install-deps
+      - task: infra:start
+      - echo "Setup complete! NATS server running on localhost:4222"
+
+  install-deps:
+    desc: Install all project dependencies
+    cmds:
+      - echo "Installing NATS CLI..."
+      - go install github.com/nats-io/natscli/nats@latest
+      - echo "Installing Go dependencies..."
+      - cd services && go mod download
+      - cd tools && go mod download
+      - echo "Installing Python dependencies..."
+      - pip install nats-py esphome
+
+  start:
+    desc: Start all services
+    deps: [infra:start]
+    cmds:
+      - task: services:discovery:run
+
+  stop:
+    desc: Stop all services
+    cmds:
+      - task: infra:stop
+
+  test:
+    desc: Run all tests
+    cmds:
+      - task: services:test
+      - task: tools:test
+      - task: bridges:test
+
+  build:
+    desc: Build all components
+    cmds:
+      - task: services:build
+      - task: tools:build
+      - task: bridges:build
+
+  clean:
+    desc: Clean all build artifacts
+    cmds:
+      - task: services:clean
+      - task: tools:clean
+      - task: bridges:clean
+      - find . -name "*.pyc" -delete
+      - find . -name "__pycache__" -type d -exec rm -rf {} +
+      - find . -name ".esphome" -type d -exec rm -rf {} +
+
+  lint:
+    desc: Run linters for all components
+    cmds:
+      - task: services:lint
+      - task: tools:lint
+      - task: esphome:lint
+
+  format:
+    desc: Format all code
+    cmds:
+      - task: services:format
+      - task: tools:format
+
+  # Development helpers
+  nats-cli:
+    desc: Open NATS CLI with project credentials
+    cmds:
+      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} {{.CLI_ARGS}}
+
+  monitor:
+    desc: Monitor NATS subjects
+    cmds:
+      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} sub "home.>"
+
+  monitor-discovery:
+    desc: Monitor device discovery
+    cmds:
+      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} sub "home.discovery.>"
+
+  monitor-devices:
+    desc: Monitor device states
+    cmds:
+      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} sub "home.devices.>"
+
+  announce-test:
+    desc: Send test device announcement
+    cmds:
+      - |
+        echo '{"device_id":"test-device","device_type":"sensor","device_name":"Test Device","status":"online"}' | \
+        nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} pub home.discovery.announce
+
+  kv-list:
+    desc: List all KV buckets
+    cmds:
+      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} kv ls
+
+  devices-list:
+    desc: List registered devices
+    cmds:
+      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} kv get devices --all
+
+  config-list:
+    desc: List device configurations
+    cmds:
+      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} kv get device-configs --all

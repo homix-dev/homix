@@ -88,13 +88,16 @@ jetstream/
 .cache/
 tmp/
 
+# Air (Go hot reload)
+.air.toml.tmp
+build-errors.log
+
 # Documentation build
 docs/_build/
 docs/.doctrees/
 
 # OS
 Thumbs.db
-.DS_Store
 .AppleDouble
 .LSOverride
 

@@ -1,0 +1,174 @@
+version: '3'
+
+vars:
+  APP_NAME: nats-ha
+  GO_FILES: 
+    sh: find . -name '*.go' -not -path './vendor/*'
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+  BUILD_TIME:
+    sh: date -u +"%Y-%m-%dT%H:%M:%SZ"
+  LDFLAGS: '-X main.version={{.VERSION}} -X main.buildTime={{.BUILD_TIME}}'
+
+tasks:
+  build:
+    desc: Build CLI tool
+    sources:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+    generates:
+      - bin/{{.APP_NAME}}
+    cmds:
+      - go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}} .
+
+  build-all:
+    desc: Build for all platforms
+    cmds:
+      - task: build-linux
+      - task: build-darwin
+      - task: build-windows
+
+  build-linux:
+    desc: Build for Linux
+    vars:
+      GOOS: linux
+      GOARCH: amd64
+    cmds:
+      - GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}} .
+
+  build-darwin:
+    desc: Build for macOS
+    vars:
+      GOOS: darwin
+      GOARCH: amd64
+    cmds:
+      - GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}} .
+      - GOOS={{.GOOS}} GOARCH=arm64 go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-arm64 .
+
+  build-windows:
+    desc: Build for Windows
+    vars:
+      GOOS: windows
+      GOARCH: amd64
+    cmds:
+      - GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}}.exe .
+
+  run:
+    desc: Run CLI
+    deps: [build]
+    cmds:
+      - ./bin/{{.APP_NAME}} {{.CLI_ARGS}}
+
+  run-tui:
+    desc: Run TUI interface
+    deps: [build]
+    cmds:
+      - ./bin/{{.APP_NAME}} tui
+
+  install:
+    desc: Install CLI globally
+    deps: [build]
+    cmds:
+      - go install -ldflags="{{.LDFLAGS}}" .
+      - echo "Installed {{.APP_NAME}} to $(go env GOPATH)/bin"
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v -race -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
+
+  test-integration:
+    desc: Run integration tests
+    cmds:
+      - go test -v -race -tags=integration ./...
+
+  lint:
+    desc: Run linters
+    deps: [install-golangci-lint]
+    cmds:
+      - golangci-lint run ./...
+
+  format:
+    desc: Format code
+    cmds:
+      - go fmt ./...
+      - go mod tidy
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf bin/
+      - rm -f coverage.out coverage.html
+
+  deps:
+    desc: Download dependencies
+    cmds:
+      - go mod download
+      - go mod verify
+
+  update-deps:
+    desc: Update dependencies
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+
+  # Development helpers
+  dev-device-list:
+    desc: List devices using CLI
+    deps: [build]
+    cmds:
+      - ./bin/{{.APP_NAME}} device list
+
+  dev-device-info:
+    desc: Get device info
+    deps: [build]
+    vars:
+      DEVICE_ID: '{{default "test-device" .DEVICE_ID}}'
+    cmds:
+      - ./bin/{{.APP_NAME}} device info {{.DEVICE_ID}}
+
+  dev-config-list:
+    desc: List configurations
+    deps: [build]
+    cmds:
+      - ./bin/{{.APP_NAME}} config list
+
+  dev-monitor:
+    desc: Monitor device events
+    deps: [build]
+    cmds:
+      - ./bin/{{.APP_NAME}} device monitor
+
+  # Tool installation
+  install-golangci-lint:
+    desc: Install golangci-lint
+    cmds:
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    status:
+      - which golangci-lint
+
+  # Release tasks
+  release:
+    desc: Create a new release
+    deps: [test, lint]
+    cmds:
+      - task: build-all
+      - echo "Release builds created in bin/"
+      - ls -la bin/
+
+  docker-build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t {{.APP_NAME}}:{{.VERSION}} -t {{.APP_NAME}}:latest .
+
+  completion:
+    desc: Generate shell completions
+    deps: [build]
+    cmds:
+      - mkdir -p completions
+      - ./bin/{{.APP_NAME}} completion bash > completions/{{.APP_NAME}}.bash
+      - ./bin/{{.APP_NAME}} completion zsh > completions/{{.APP_NAME}}.zsh
+      - ./bin/{{.APP_NAME}} completion fish > completions/{{.APP_NAME}}.fish
+      - echo "Completions generated in completions/"

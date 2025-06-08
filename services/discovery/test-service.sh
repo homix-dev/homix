@@ -61,9 +61,9 @@ echo
 # Check prerequisites
 log_info "Checking prerequisites..."
 
-# Check if NATS is running
-if ! nats server info -s $NATS_URL >/dev/null 2>&1; then
-    log_error "NATS server is not running at $NATS_URL"
+# Check if NATS is running by trying to publish
+if ! echo "test" | nats pub test.connection -s $NATS_URL >/dev/null 2>&1; then
+    log_error "Cannot connect to NATS server at $NATS_URL"
     echo "Please start NATS server first:"
     echo "  cd infrastructure && ./setup-local-nats.sh"
     exit 1
@@ -79,29 +79,37 @@ if [ ! -f "$SERVICE_DIR/discovery" ]; then
 fi
 log_success "Discovery service binary exists"
 
-# Start discovery service in background
-log_info "Starting discovery service..."
-cd "$SERVICE_DIR"
-./discovery --debug > discovery.log 2>&1 &
-DISCOVERY_PID=$!
-cd - >/dev/null
+# Check if discovery service is already running
+if nats request home.services.discovery.status '' -s $NATS_URL --timeout 1s >/dev/null 2>&1; then
+    log_success "Discovery service is already running"
+    DISCOVERY_PID=""
+else
+    # Start discovery service in background
+    log_info "Starting discovery service..."
+    cd "$SERVICE_DIR"
+    ./discovery --debug > discovery.log 2>&1 &
+    DISCOVERY_PID=$!
+    cd - >/dev/null
 
-# Wait for service to start
-sleep 3
+    # Wait for service to start
+    sleep 3
 
-# Check if service is running
-if ! kill -0 $DISCOVERY_PID 2>/dev/null; then
-    log_error "Discovery service failed to start"
-    cat "$SERVICE_DIR/discovery.log"
-    exit 1
+    # Check if service is running
+    if ! kill -0 $DISCOVERY_PID 2>/dev/null; then
+        log_error "Discovery service failed to start"
+        cat "$SERVICE_DIR/discovery.log"
+        exit 1
+    fi
+    log_success "Discovery service started (PID: $DISCOVERY_PID)"
 fi
-log_success "Discovery service started (PID: $DISCOVERY_PID)"
 
 # Function to cleanup on exit
 cleanup() {
-    log_info "Cleaning up..."
-    kill $DISCOVERY_PID 2>/dev/null || true
-    wait $DISCOVERY_PID 2>/dev/null || true
+    if [ -n "$DISCOVERY_PID" ]; then
+        log_info "Cleaning up..."
+        kill $DISCOVERY_PID 2>/dev/null || true
+        wait $DISCOVERY_PID 2>/dev/null || true
+    fi
 }
 trap cleanup EXIT
 

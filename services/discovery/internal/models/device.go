@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -99,10 +100,10 @@ type DeviceState struct {
 // Validate checks if the device data is valid
 func (d *Device) Validate() error {
 	if d.DeviceID == "" {
-		return json.RawMessage(`{"error": "device_id is required"}`)
+		return fmt.Errorf("device_id is required")
 	}
 	if d.DeviceType == "" {
-		return json.RawMessage(`{"error": "device_type is required"}`)
+		return fmt.Errorf("device_type is required")
 	}
 	if d.Name == "" {
 		d.Name = d.DeviceID

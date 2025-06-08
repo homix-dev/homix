@@ -1,0 +1,18 @@
+# Discovery Service Configuration
+
+# Debug mode
+debug: false
+
+# NATS configuration
+nats:
+  url: nats://localhost:4222
+  user: home
+  password: changeme
+  # credentials: /path/to/nats.creds  # Use this for credential file auth
+  timeout: 5s
+
+# Device registry store configuration
+store:
+  bucket: device_registry
+  ttl: 24h
+  max_devices: 1000

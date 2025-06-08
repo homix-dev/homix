@@ -11,6 +11,7 @@ vars:
 tasks:
   build:
     desc: Build discovery service
+    dir: services/discovery
     sources:
       - '**/*.go'
       - go.mod
@@ -18,11 +19,12 @@ tasks:
     generates:
       - bin/{{.APP_NAME}}
     cmds:
-      - go build -o bin/{{.APP_NAME}} ./cmd/discovery
+      - go build -o bin/{{.APP_NAME}} .
 
   run:
     desc: Run discovery service
     deps: [build]
+    dir: services/discovery
     env:
       NATS_URL: '{{.NATS_SERVER}}'
       NATS_USER: '{{.NATS_USER}}'
@@ -42,6 +44,7 @@ tasks:
 
   test:
     desc: Run tests
+    dir: services/discovery
     env:
       NATS_URL: '{{.NATS_SERVER}}'
       NATS_USER: '{{.NATS_USER}}'
@@ -49,6 +52,37 @@ tasks:
     cmds:
       - go test -v -race -coverprofile=coverage.out ./...
       - go tool cover -html=coverage.out -o coverage.html
+
+  test-integration:
+    desc: Run integration tests against live NATS server
+    deps: [build]
+    vars:
+      NATS_CMD: 'nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}}'
+    cmds:
+      - echo "=== Discovery Service Integration Tests ==="
+      - 'echo "NATS URL: {{.NATS_SERVER}}"'
+      - echo ""
+      - |
+        echo "Starting discovery service..."
+        ./bin/{{.APP_NAME}} > discovery-test.log 2>&1 &
+        DISCOVERY_PID=$!
+        echo "Service started (PID: $DISCOVERY_PID)"
+        sleep 3
+        echo ""
+        echo "Running tests..."
+        echo -n "1. Service health check... "
+        {{.NATS_CMD}} request home.services.discovery.status '' --timeout 2s | grep -q '"status":"healthy"' && echo "PASS" || echo "FAIL"
+        echo -n "2. Device announcement... "
+        {{.NATS_CMD}} pub home.discovery.announce '{"device_id":"test-sensor-01","device_type":"sensor","name":"Test Sensor"}' && echo "PASS" || echo "FAIL"
+        sleep 1
+        echo -n "3. List devices... "
+        {{.NATS_CMD}} request home.discovery.request '' --timeout 2s | grep -q 'test-sensor-01' && echo "PASS" || echo "FAIL"
+        echo -n "4. Get specific device... "
+        {{.NATS_CMD}} request home.services.discovery.command '{"command":"get_device","params":{"device_id":"test-sensor-01"}}' --timeout 2s | grep -q '"device_id":"test-sensor-01"' && echo "PASS" || echo "FAIL"
+        echo ""
+        echo "Cleaning up..."
+        kill $DISCOVERY_PID 2>/dev/null || true
+        echo "[OK] Integration tests completed"
 
   test-watch:
     desc: Run tests in watch mode
@@ -146,3 +180,100 @@ tasks:
     deps: [test]
     cmds:
       - open coverage.html || xdg-open coverage.html
+
+  install:
+    desc: Install discovery service to /usr/local/bin
+    deps: [build]
+    dir: services/discovery
+    cmds:
+      - |
+        echo "Installing {{.APP_NAME}} to /usr/local/bin..."
+        sudo cp bin/{{.APP_NAME}} /usr/local/bin/
+        sudo chmod +x /usr/local/bin/{{.APP_NAME}}
+        echo "✅ Installed {{.APP_NAME}} to /usr/local/bin/"
+        echo "You can now run: {{.APP_NAME}}"
+
+  uninstall:
+    desc: Uninstall discovery service from /usr/local/bin
+    cmds:
+      - |
+        echo "Uninstalling {{.APP_NAME}} from /usr/local/bin..."
+        sudo rm -f /usr/local/bin/{{.APP_NAME}}
+        echo "✅ Uninstalled {{.APP_NAME}}"
+
+  install-service:
+    desc: Install systemd service (Linux only)
+    deps: [install]
+    cmds:
+      - |
+        if [[ "$OSTYPE" != "linux-gnu"* ]]; then
+          echo "❌ Systemd service installation is only supported on Linux"
+          exit 1
+        fi
+        echo "Installing systemd service..."
+        sudo cp discovery-service.service /etc/systemd/system/
+        sudo useradd -r -s /bin/false nats || true
+        sudo mkdir -p /var/lib/nats-discovery
+        sudo chown nats:nats /var/lib/nats-discovery
+        sudo systemctl daemon-reload
+        sudo systemctl enable discovery-service
+        echo "✅ Systemd service installed"
+        echo ""
+        echo "To start the service:"
+        echo "  sudo systemctl start discovery-service"
+        echo ""
+        echo "To check status:"
+        echo "  sudo systemctl status discovery-service"
+        echo ""
+        echo "To view logs:"
+        echo "  sudo journalctl -u discovery-service -f"
+
+  uninstall-service:
+    desc: Uninstall systemd service (Linux only)
+    cmds:
+      - |
+        if [[ "$OSTYPE" != "linux-gnu"* ]]; then
+          echo "❌ Systemd service uninstallation is only supported on Linux"
+          exit 1
+        fi
+        echo "Uninstalling systemd service..."
+        sudo systemctl stop discovery-service || true
+        sudo systemctl disable discovery-service || true
+        sudo rm -f /etc/systemd/system/discovery-service.service
+        sudo systemctl daemon-reload
+        echo "✅ Systemd service uninstalled"
+
+  install-service-macos:
+    desc: Install launchd service (macOS only)
+    deps: [install]
+    cmds:
+      - |
+        if [[ "$OSTYPE" != "darwin"* ]]; then
+          echo "❌ Launchd service installation is only supported on macOS"
+          exit 1
+        fi
+        echo "Installing launchd service..."
+        sudo mkdir -p /usr/local/var/log
+        sudo mkdir -p /usr/local/var/lib/nats-discovery
+        sudo cp com.nats.discovery-service.plist /Library/LaunchDaemons/
+        sudo launchctl load /Library/LaunchDaemons/com.nats.discovery-service.plist
+        echo "✅ Launchd service installed"
+        echo ""
+        echo "To check status:"
+        echo "  sudo launchctl list | grep discovery-service"
+        echo ""
+        echo "To view logs:"
+        echo "  tail -f /usr/local/var/log/discovery-service.log"
+
+  uninstall-service-macos:
+    desc: Uninstall launchd service (macOS only)
+    cmds:
+      - |
+        if [[ "$OSTYPE" != "darwin"* ]]; then
+          echo "❌ Launchd service uninstallation is only supported on macOS"
+          exit 1
+        fi
+        echo "Uninstalling launchd service..."
+        sudo launchctl unload /Library/LaunchDaemons/com.nats.discovery-service.plist || true
+        sudo rm -f /Library/LaunchDaemons/com.nats.discovery-service.plist
+        echo "✅ Launchd service uninstalled"

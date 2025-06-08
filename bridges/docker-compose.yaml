@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  mqtt-nats-bridge:
+    build:
+      context: .
+      dockerfile: mqtt-nats-bridge/Dockerfile
+    container_name: mqtt-nats-bridge
+    restart: unless-stopped
+    environment:
+      # MQTT Configuration
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_USERNAME=
+      - MQTT_PASSWORD=
+      
+      # NATS Configuration
+      - NATS_SERVERS=nats://nats:4222
+      - NATS_USER=home
+      - NATS_PASSWORD=changeme
+      
+      # Bridge Configuration
+      - ENABLE_DISCOVERY=true
+      - ENABLE_METRICS=true
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+    ports:
+      - "9090:9090"  # Prometheus metrics
+    volumes:
+      - ./bridge_state.json:/app/bridge_state.json
+    depends_on:
+      - mosquitto
+      - nats
+    networks:
+      - home-automation
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+    networks:
+      - home-automation
+
+  nats:
+    image: nats:2-alpine
+    container_name: nats
+    restart: unless-stopped
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - ./nats-server.conf:/etc/nats/nats-server.conf
+      - ./data/nats:/data
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    networks:
+      - home-automation
+
+networks:
+  home-automation:
+    driver: bridge

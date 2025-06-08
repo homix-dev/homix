@@ -12,9 +12,32 @@ This guide walks you through setting up the NATS Home Automation system from scr
 
 ## Phase 1: NATS Infrastructure Setup
 
-### Option A: Local NATS Server
+### Quick Start (Recommended)
 
-1. **Using Docker**:
+Using Task automation:
+```bash
+# Check dependencies
+task check-deps
+
+# Setup and start NATS in development mode
+task setup-dev
+
+# Verify connection
+task infra:test-connection
+```
+
+### Option A: Local NATS Server (Manual)
+
+1. **Using Task**:
+```bash
+# Start NATS in development mode (no Synadia Cloud needed)
+task infra:start-dev
+
+# Or start with Synadia Cloud connection
+task infra:start
+```
+
+2. **Using Docker directly**:
 ```bash
 # Create a directory for NATS data
 mkdir -p ~/nats-data
@@ -120,27 +143,44 @@ nats sub test.subject
 
 ## Phase 2: Core Services Setup
 
-### Discovery Service
+### Using Task (Recommended)
 
-1. **Clone the repository**:
 ```bash
+# Clone the repository
 git clone https://github.com/yourusername/nats-home-automation.git
 cd nats-home-automation
+
+# Run all services in development mode
+task dev
+
+# Or run services individually
+task services:discovery:run
 ```
 
-2. **Build and run discovery service**:
+### Manual Setup
+
+1. **Build services**:
 ```bash
-cd services/discovery
-go build -o discovery
-./discovery --nats-url nats://localhost:4222
+task services:build
 ```
 
-### Configuration Service
-
+2. **Run discovery service**:
 ```bash
-cd services/config
-go build -o config-service
-./config-service --nats-url nats://localhost:4222
+task services:discovery:run
+```
+
+### Install Services
+
+To install services globally:
+```bash
+# Install binaries to /usr/local/bin
+task install
+
+# Install as system service (Linux)
+task services:discovery:install-service
+
+# Install as launchd service (macOS)
+task services:discovery:install-service-macos
 ```
 
 ## Phase 3: ESPHome Device Setup

@@ -217,17 +217,37 @@ If the TUI doesn't display correctly:
 
 ### Building from Source
 
+Using Task (recommended):
 ```bash
 git clone https://github.com/calmera/nats-home-automation
-cd nats-home-automation/tools/nats-ha-cli
+cd nats-home-automation
+task tools:cli:build
+```
+
+Or manually:
+```bash
+cd tools/nats-ha-cli
 go mod download
-go build -o nats-ha
+go build -o bin/nats-ha
+```
+
+### Installing
+
+Install to /usr/local/bin:
+```bash
+task tools:cli:install
 ```
 
 ### Running Tests
 
 ```bash
-go test ./...
+task tools:cli:test
+```
+
+### Running the Demo
+
+```bash
+task tools:cli:demo
 ```
 
 ### Contributing

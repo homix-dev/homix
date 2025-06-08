@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nats.discovery-service</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/discovery-service</string>
+    </array>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>NATS_URL</key>
+        <string>nats://localhost:4222</string>
+        <key>NATS_USER</key>
+        <string>home</string>
+        <key>NATS_PASSWORD</key>
+        <string>changeme</string>
+    </dict>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/discovery-service.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/discovery-service.error.log</string>
+    
+    <key>WorkingDirectory</key>
+    <string>/usr/local/var/lib/nats-discovery</string>
+</dict>
+</plist>

@@ -1,13 +1,14 @@
 version: '3'
 
 vars:
-  COMPOSE_FILE: docker-compose.yaml
+  COMPOSE_FILE: docker-compose.yml
   NATS_CONFIG: nats-server.conf
   CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
 
 tasks:
   setup:
     desc: Setup infrastructure prerequisites
+    dir: infrastructure
     cmds:
       - echo "Checking container tool..."
       - '{{.CONTAINER_TOOL}} --version'
@@ -18,6 +19,29 @@ tasks:
 
   start:
     desc: Start NATS server
+    dir: infrastructure
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} up -d'
+      - echo "Waiting for NATS to be ready..."
+      - sleep 3
+      - task: health-check
+
+  start-dev:
+    desc: Start NATS server in development mode (no Synadia Cloud)
+    dir: infrastructure
+    env:
+      NATS_CONFIG: nats-server-dev.conf
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} up -d'
+      - echo "Waiting for NATS to be ready..."
+      - sleep 3
+      - task: health-check
+
+  start-hybrid:
+    desc: Start NATS server in hybrid mode (local auth + Synadia Cloud)
+    dir: infrastructure
+    env:
+      NATS_CONFIG: nats-server-hybrid.conf
     cmds:
       - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} up -d'
       - echo "Waiting for NATS to be ready..."
@@ -26,6 +50,7 @@ tasks:
 
   stop:
     desc: Stop NATS server
+    dir: infrastructure
     cmds:
       - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} down'
 
@@ -37,6 +62,7 @@ tasks:
 
   logs:
     desc: Show NATS server logs
+    dir: infrastructure
     cmds:
       - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} logs -f'
 
@@ -45,8 +71,38 @@ tasks:
     cmds:
       - nats --server=nats://localhost:4222 --user=home --password=changeme server check connection
 
+  test-connection:
+    desc: Run comprehensive connection tests
+    vars:
+      NATS_CMD: 'nats --server={{default "nats://localhost:4222" .NATS_URL}} --user={{default "home" .NATS_USER}} --password={{default "changeme" .NATS_PASSWORD}}'
+    cmds:
+      - echo "Testing NATS Connection..."
+      - 'echo "Server: {{default "nats://localhost:4222" .NATS_URL}}"'
+      - echo ""
+      - echo "1. Testing server connection..."
+      - '{{.NATS_CMD}} server check connection && echo "PASS: Server connection successful" || (echo "FAIL: Server connection failed" && exit 1)'
+      - echo ""
+      - echo "2. Checking JetStream status..."
+      - '{{.NATS_CMD}} server report jetstream 2>/dev/null | grep -q "JetStream" && echo "PASS: JetStream is enabled" || echo "WARN: JetStream might not be enabled"'
+      - echo ""
+      - echo "3. Testing publish/subscribe..."
+      - 'TEST_MSG="Hello NATS $(date)" && echo "$TEST_MSG" | {{.NATS_CMD}} pub home.test.message && echo "PASS: Publish/Subscribe working"'
+      - echo ""
+      - echo "4. Testing KV Store..."
+      - |
+        {{.NATS_CMD}} kv add test-bucket >/dev/null 2>&1 || true
+        echo "test-value" | {{.NATS_CMD}} kv put test-bucket test-key >/dev/null 2>&1
+        {{.NATS_CMD}} kv get test-bucket test-key 2>/dev/null | grep -q "test-value" && echo "PASS: KV Store working" || echo "FAIL: KV Store failed"
+        {{.NATS_CMD}} kv rm test-bucket --force >/dev/null 2>&1 || true
+      - echo ""
+      - echo "5. Testing subject permissions..."
+      - 'echo "test" | {{.NATS_CMD}} pub "home.devices.test" >/dev/null 2>&1 && echo "PASS: Can publish to home.* subjects" || echo "FAIL: Cannot publish to home.* subjects"'
+      - echo ""
+      - echo "All connection tests completed!"
+
   generate-certs:
     desc: Generate self-signed certificates for NATS
+    dir: infrastructure
     cmds:
       - |
         if [ ! -f data/nats/certs/server.crt ]; then
@@ -61,12 +117,13 @@ tasks:
 
   backup:
     desc: Backup JetStream data
-    vars:
-      BACKUP_FILE: 'nats-backup-{{now | date "2006-01-02-150405"}}.tar.gz'
+    dir: infrastructure
     cmds:
-      - echo "Creating backup {{.BACKUP_FILE}}..."
-      - tar -czf {{.BACKUP_FILE}} data/nats/jetstream
-      - echo "Backup created: {{.BACKUP_FILE}}"
+      - |
+        BACKUP_FILE="nats-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+        echo "Creating backup $BACKUP_FILE..."
+        tar -czf $BACKUP_FILE data/nats/jetstream
+        echo "Backup created: $BACKUP_FILE"
 
   restore:
     desc: Restore JetStream data from backup
@@ -85,15 +142,23 @@ tasks:
       - task: start
 
   clean:
-    desc: Clean all data (WARNING: Destructive!)
-    prompt: This will delete all NATS data. Are you sure?
+    desc: "Clean all data (WARNING: Destructive!)"
     cmds:
-      - task: stop
-      - rm -rf data/nats/jetstream/*
-      - echo "All data cleaned"
+      - |
+        echo "WARNING: This will delete all NATS data!"
+        read -p "Are you sure? (y/N) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+          task infra:stop
+          rm -rf data/nats/jetstream/*
+          echo "All data cleaned"
+        else
+          echo "Cancelled"
+        fi
 
   shell:
     desc: Open shell in NATS container
+    dir: infrastructure
     cmds:
       - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} exec nats sh'
 

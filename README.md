@@ -54,20 +54,51 @@ git clone https://github.com/yourusername/nats-home-automation.git
 cd nats-home-automation
 ```
 
-2. Set up NATS infrastructure:
+2. Check dependencies:
 ```bash
-# Install NATS server locally
-docker run -d --name nats -p 4222:4222 nats:latest -js
-
-# Or use Synadia Cloud (recommended for production)
+task check-deps
 ```
 
-3. Install the Home Assistant integration:
+3. Set up and run in development mode:
+```bash
+# Setup development environment
+task setup-dev
+
+# Run all services
+task dev
+
+# Or run services individually
+task infra:start-dev    # Start NATS server
+task services:discovery:run  # Start discovery service
+```
+
+4. Test the system:
+```bash
+# Monitor all messages
+task monitor
+
+# Send a test device announcement
+task announce-test
+
+# Run all tests
+task test
+```
+
+For production with Synadia Cloud:
+```bash
+# Copy your Synadia credentials
+cp /path/to/nats-home-automation.creds infrastructure/
+
+# Start NATS with Synadia Cloud connection
+task infra:start
+```
+
+5. Install the Home Assistant integration:
 ```bash
 cp -r ha-integration/custom_components/nats_bridge ~/.homeassistant/custom_components/
 ```
 
-4. Configure your first ESP device:
+6. Configure your first ESP device:
 ```yaml
 # example-device.yaml
 external_components:
@@ -147,6 +178,56 @@ home.events.{type}                    # System events
 - **Throughput**: Handles 1M+ messages/second
 - **Resource Usage**: < 20MB RAM on Raspberry Pi
 - **Scalability**: Supports 1000s of devices per server
+
+## Development
+
+### Available Commands
+
+This project uses [Task](https://taskfile.dev) for automation. Run `task --list` to see all available commands.
+
+Common commands:
+```bash
+# Development
+task dev              # Run in development mode
+task start            # Start all services
+task stop             # Stop all services
+
+# Building and Installation
+task build            # Build all components
+task install          # Install binaries to /usr/local/bin
+task clean            # Clean build artifacts
+task clean-all        # Deep clean (remove all artifacts)
+
+# Testing and Quality
+task test             # Run all tests
+task lint             # Run linters
+task format           # Format code
+
+# Monitoring
+task monitor          # Monitor all NATS messages
+task monitor-discovery # Monitor device discovery
+task monitor-devices  # Monitor device states
+
+# Tools
+task tools:cli:run    # Run the CLI tool
+task tools:tui:run    # Run the TUI interface
+```
+
+### Project Structure
+
+```
+nats-home-automation/
+├── infrastructure/      # NATS server configuration
+├── services/           # Go microservices
+│   └── discovery/      # Device discovery service
+├── tools/              # CLI and TUI tools
+│   └── nats-ha-cli/    # Command-line interface
+├── bridges/            # Protocol bridges
+│   └── mqtt-nats-bridge/
+├── esphome-components/ # ESPHome NATS components
+├── ha-integration/     # Home Assistant integration
+└── docs/              # Documentation
+```
 
 ## Development Status
 

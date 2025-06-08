@@ -1,0 +1,73 @@
+# Example configuration for MQTT-NATS Bridge
+
+mqtt:
+  host: localhost
+  port: 1883
+  username: null
+  password: null
+  client_id: nats-mqtt-bridge
+  keepalive: 60
+  tls_enabled: false
+
+nats:
+  servers:
+    - nats://localhost:4222
+  name: mqtt-nats-bridge
+  user: home
+  password: changeme
+
+bridge:
+  # Topic prefixes
+  mqtt_to_nats_prefix: homeassistant
+  nats_to_mqtt_prefix: home.devices
+  
+  # Home Assistant discovery
+  enable_discovery: true
+  discovery_prefix: homeassistant
+  
+  # Performance tuning
+  max_concurrent_messages: 100
+  message_buffer_size: 1000
+  
+  # Monitoring
+  enable_metrics: true
+  metrics_port: 9090
+  
+  # Logging
+  log_level: INFO
+  log_format: json  # json, color, or plain
+  
+  # State persistence
+  enable_persistence: true
+  state_file: bridge_state.json
+
+# Custom topic mappings
+topic_mappings:
+  # Example: Map Zigbee2MQTT topics
+  - mqtt_pattern: "zigbee2mqtt/+/set"
+    nats_pattern: "home.devices.zigbee.*.command"
+    bidirectional: true
+    
+  # Example: Map Tasmota topics
+  - mqtt_pattern: "tele/+/SENSOR"
+    nats_pattern: "home.devices.tasmota.*.telemetry"
+    bidirectional: false
+    
+  # Example: Map custom sensors
+  - mqtt_pattern: "sensors/+/+"
+    nats_pattern: "home.sensors.*.*"
+    bidirectional: true
+
+# Device type mappings for discovery
+device_type_map:
+  switch: switch
+  light: light
+  sensor: sensor
+  binary_sensor: binary_sensor
+  climate: climate
+  cover: cover
+  fan: fan
+  lock: lock
+  vacuum: vacuum
+  camera: camera
+  media_player: media_player

@@ -18,12 +18,22 @@ tasks:
   mqtt-bridge:
     desc: Run MQTT to NATS bridge
     cmds:
-      - '{{.PYTHON_CMD}} mqtt-nats-bridge/main.py'
+      - cd mqtt-nats-bridge && {{.PYTHON_CMD}} -m main
 
   test:
     desc: Run bridge tests
     cmds:
-      - '{{.PYTHON_CMD}} -m pytest tests/ -v'
+      - |
+        if {{.PYTHON_CMD}} -c "import pytest" >/dev/null 2>&1; then
+          if [ -d "tests" ]; then
+            {{.PYTHON_CMD}} -m pytest tests/ -v
+          else
+            echo "No tests directory found in bridges/"
+          fi
+        else
+          echo "Warning: pytest not installed. Skipping Python tests."
+          echo "To run tests, install pytest: pip install pytest"
+        fi
 
   lint:
     desc: Lint Python code

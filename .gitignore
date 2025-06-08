@@ -2,7 +2,6 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 .Python
 build/
 develop-eggs/
@@ -29,7 +28,6 @@ MANIFEST
 .tox/
 .nox/
 .hypothesis/
-*.log
 
 # Go
 *.exe
@@ -43,6 +41,13 @@ MANIFEST
 /Godeps/
 /go.sum
 /go.work.sum
+bin/
+services/discovery/discovery
+services/discovery/discovery-service
+tools/nats-ha-cli/nats-ha
+coverage.html
+coverage.out
+*.log
 
 # ESPHome
 .esphome/
@@ -67,7 +72,6 @@ tts/
 *.swp
 *.swo
 *~
-.DS_Store
 
 # Environment
 .env
@@ -103,3 +107,5 @@ Thumbs.db
 
 *.creds
 .claude
+data
+.task

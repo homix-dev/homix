@@ -28,3 +28,8 @@ tasks:
     desc: Clean all services
     cmds:
       - task: discovery:clean
+
+  install:
+    desc: Install all services
+    cmds:
+      - task: discovery:install

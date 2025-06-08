@@ -1,0 +1,13 @@
+# NATS Python client
+nats-py>=2.6.0
+
+# Async support (included with Python 3.7+, but listed for clarity)
+asyncio
+
+# JSON handling (built-in, but listed for clarity)
+# json
+
+# Optional: for more advanced examples
+aiofiles>=23.0.0  # Async file operations
+pydantic>=2.0.0   # Data validation
+python-dotenv>=1.0.0  # Environment configuration

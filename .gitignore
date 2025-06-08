@@ -1,0 +1,102 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
+.tox/
+.nox/
+.hypothesis/
+*.log
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/vendor/
+/Godeps/
+/go.sum
+/go.work.sum
+
+# ESPHome
+.esphome/
+secrets.yaml
+
+# Home Assistant
+.storage/
+.cloud/
+.google.token
+home-assistant.log
+home-assistant_v2.db
+home-assistant_v2.db-wal
+home-assistant_v2.db-shm
+*.db-journal
+.HA_VERSION
+.uuid
+tts/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+venv/
+env/
+ENV/
+
+# NATS
+nats-server.log
+nats-data/
+jetstream/
+
+# Temporary files
+*.tmp
+*.bak
+.cache/
+tmp/
+
+# Documentation build
+docs/_build/
+docs/.doctrees/
+
+# OS
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+
+*.creds
+.claude

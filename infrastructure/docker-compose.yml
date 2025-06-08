@@ -1,0 +1,15 @@
+services:
+  nats:
+    image: nats:2.11
+    container_name: nats-home-automation
+    ports:
+      - "4222:4222"   # Client connections
+      - "8222:8222"   # HTTP management
+      - "6222:6222"   # Cluster
+    volumes:
+      - ./cert.pem:/etc/ssl/cert.pem:ro
+      - ./nats-home-automation.creds:/etc/nats/nats-home-automation.creds:ro
+      - ./nats-server.conf:/etc/nats/nats-server.conf
+      - ./nats-data:/data
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    restart: unless-stopped

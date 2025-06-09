@@ -1,0 +1,143 @@
+version: '3'
+
+vars:
+  GO_TEST_FLAGS: -v -race -coverprofile=coverage.out
+  PYTHON_TEST_FLAGS: -v --cov --cov-report=term-missing
+
+tasks:
+  default:
+    desc: Run all tests
+    deps: [unit, integration]
+
+  unit:
+    desc: Run unit tests
+    deps: [unit:go, unit:python]
+
+  unit:go:
+    desc: Run Go unit tests
+    cmds:
+      - echo "Running Go unit tests..."
+      - |
+        cd ../services/discovery && go test ./... {{.GO_TEST_FLAGS}}
+      - |
+        cd ../bridges/mqtt-nats && go test ./... {{.GO_TEST_FLAGS}}
+      - |
+        cd ../tools/nats-ha-cli && go test ./... {{.GO_TEST_FLAGS}}
+
+  unit:python:
+    desc: Run Python unit tests
+    cmds:
+      - echo "Running Python unit tests..."
+      - |
+        cd ../ha-integration && python -m pytest tests/ {{.PYTHON_TEST_FLAGS}}
+
+  integration:
+    desc: Run integration tests
+    deps: [check-nats]
+    cmds:
+      - echo "Running integration tests..."
+      - python -m pytest integration/ {{.PYTHON_TEST_FLAGS}}
+
+  integration:infra:
+    desc: Test NATS infrastructure
+    deps: [check-nats]
+    dir: ../infrastructure
+    cmds:
+      - bash tests/test_infrastructure.sh {{.MODE | default "dev"}}
+
+  benchmark:
+    desc: Run performance benchmarks
+    deps: [check-nats]
+    cmds:
+      - echo "Running benchmarks..."
+      - go test -bench=. -benchmem ./benchmarks/...
+
+  coverage:
+    desc: Generate test coverage report
+    cmds:
+      - echo "Generating coverage reports..."
+      - go tool cover -html=coverage.out -o coverage.html
+      - python -m coverage html
+      - 'echo "Coverage reports generated: coverage.html and htmlcov/index.html"'
+
+  lint:
+    desc: Run linters
+    cmds:
+      - echo "Running linters..."
+      - |
+        echo "Go linting..."
+        if command -v golangci-lint >/dev/null 2>&1; then
+          cd .. && golangci-lint run ./...
+        else
+          echo "golangci-lint not installed"
+        fi
+      - |
+        echo "Python linting..."
+        if command -v ruff >/dev/null 2>&1; then
+          cd ../ha-integration && ruff check .
+        elif command -v flake8 >/dev/null 2>&1; then
+          cd ../ha-integration && flake8 .
+        else
+          echo "No Python linter found"
+        fi
+
+  check-nats:
+    desc: Check if NATS is running
+    silent: true
+    cmds:
+      - |
+        if ! nats ping --server="nats://localhost:4222" >/dev/null 2>&1; then
+          echo "NATS server not running. Start with: task infra:start-dev"
+          exit 1
+        fi
+
+  setup:
+    desc: Setup test environment
+    cmds:
+      - echo "Setting up test environment..."
+      - pip install -r requirements-test.txt
+      - go install github.com/stretchr/testify/...
+      - echo "✓ Test environment ready"
+
+  clean:
+    desc: Clean test artifacts
+    cmds:
+      - rm -f coverage.out coverage.html
+      - rm -rf htmlcov .coverage .pytest_cache
+      - rm -rf **/__pycache__
+      - echo "✓ Test artifacts cleaned"
+
+  watch:
+    desc: Watch for changes and run tests
+    cmds:
+      - |
+        echo "Watching for changes..."
+        if command -v entr >/dev/null 2>&1; then
+          find .. -name "*.go" -o -name "*.py" | entr -c task unit
+        else
+          echo "entr not installed. Install with: brew install entr"
+          exit 1
+        fi
+
+  ci:
+    desc: Run tests in CI mode
+    cmds:
+      - task: lint
+      - task: unit
+      - task: integration
+      - task: coverage
+
+  report:
+    desc: Generate test report
+    cmds:
+      - echo "=== Test Report ==="
+      - echo
+      - echo "Go Tests:"
+      - go test ./... -json | go-test-report
+      - echo
+      - echo "Python Tests:"
+      - python -m pytest --tb=short --quiet
+      - echo
+      - echo "Coverage Summary:"
+      - go tool cover -func=coverage.out | tail -1
+      - python -m coverage report | tail -1

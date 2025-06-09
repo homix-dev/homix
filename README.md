@@ -33,9 +33,11 @@ The system uses a microservices architecture with NATS as the central messaging 
 
 - **NATS Server**: Central messaging hub with JetStream persistence
 - **ESPHome Components**: Custom NATS client components for ESP devices
-- **Home Assistant Bridge**: Bidirectional integration between NATS and HA
-- **Protocol Bridges**: Translation layers for existing IoT protocols
-- **Discovery Service**: Automatic device detection and registration
+- **Home Assistant Integration**: Full bidirectional integration between NATS and HA ✅
+- **Protocol Bridges**: MQTT to NATS bridge for existing devices ✅
+- **Discovery Service**: Automatic device detection and registration ✅
+- **Arduino Library**: Native NATS client for Arduino/ESP boards ✅
+- **CLI & TUI Tools**: Management interfaces for the system ✅
 
 ## Getting Started
 
@@ -95,8 +97,15 @@ task infra:start
 
 5. Install the Home Assistant integration:
 ```bash
+# Using Task
+cd ha-integration
+task install
+
+# Or manually
 cp -r ha-integration/custom_components/nats_bridge ~/.homeassistant/custom_components/
 ```
+
+Then restart Home Assistant and add the integration via the UI.
 
 6. Configure your first ESP device:
 ```yaml
@@ -132,10 +141,14 @@ nats-home-automation/
 │   └── nats_switch/      # Switch component
 ├── ha-integration/       # Home Assistant integration
 │   └── custom_components/
-│       └── nats_bridge/
+│       └── nats_bridge/  # Full HA integration
 ├── bridges/              # Protocol bridges
-│   ├── zigbee2mqtt/      # Zigbee bridge
-│   └── mqtt/             # Generic MQTT bridge
+│   └── mqtt-nats/        # MQTT to NATS bridge
+├── services/             # Microservices
+│   └── discovery/        # Device discovery service
+├── tools/                # CLI and TUI tools
+│   └── nats-ha-cli/      # Management interface
+├── arduino-nats-client/  # Arduino library
 └── docs/                 # Documentation
     ├── setup.md          # Detailed setup guide
     ├── architecture.md   # System architecture
@@ -158,19 +171,26 @@ home.events.{type}                    # System events
 ### Current Features
 
 - ✅ NATS Core messaging for real-time device control
-- ✅ JetStream persistence for device states
+- ✅ JetStream persistence for device states and configuration
 - ✅ ESPHome external components for ESP devices
-- ✅ Home Assistant custom integration
-- ✅ Device discovery and auto-registration
-- ✅ MQTT protocol bridge
+- ✅ Home Assistant custom integration with auto-discovery
+- ✅ Device discovery and auto-registration service
+- ✅ MQTT to NATS protocol bridge
+- ✅ Arduino library for native NATS support
+- ✅ CLI and TUI management tools
+- ✅ Comprehensive Taskfile automation
 
 ### Roadmap
 
+- [ ] Zigbee2MQTT to NATS bridge
+- [ ] Z-Wave JS integration
 - [ ] Web-based management UI
 - [ ] Advanced automation engine
 - [ ] Multi-site synchronization
 - [ ] Voice assistant integration
 - [ ] Energy monitoring dashboard
+- [ ] Device templates library
+- [ ] MicroPython NATS client
 
 ## Performance
 

@@ -1,0 +1,56 @@
+# NATS Bridge Services
+
+publish:
+  name: Publish Message
+  description: Publish a message to a NATS subject
+  fields:
+    subject:
+      name: Subject
+      description: The NATS subject to publish to
+      required: true
+      example: "home.devices.switch.living-room.command"
+      selector:
+        text:
+    payload:
+      name: Payload
+      description: The message payload (JSON or text)
+      required: true
+      example: '{"action": "on"}'
+      selector:
+        text:
+          multiline: true
+
+request:
+  name: Request/Reply
+  description: Send a request and wait for a reply
+  fields:
+    subject:
+      name: Subject
+      description: The NATS subject to send the request to
+      required: true
+      example: "home.devices.sensor.temp01.command"
+      selector:
+        text:
+    payload:
+      name: Payload
+      description: The request payload (JSON or text)
+      required: true
+      example: '{"action": "read"}'
+      selector:
+        text:
+          multiline: true
+    timeout:
+      name: Timeout
+      description: Timeout in seconds to wait for reply
+      required: false
+      default: 5
+      example: 5
+      selector:
+        number:
+          min: 1
+          max: 30
+          unit_of_measurement: seconds
+
+reload:
+  name: Reload
+  description: Reload the NATS Bridge integration

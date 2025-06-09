@@ -82,12 +82,6 @@ tasks:
     cmds:
       - task: infra:stop
 
-  test:
-    desc: Run all tests
-    cmds:
-      - task: services:test
-      - task: tools:test
-      - task: bridges:test
 
   build:
     desc: Build all components
@@ -132,6 +126,35 @@ tasks:
     cmds:
       - task: services:format
       - task: tools:format
+
+  test:
+    desc: Run all tests
+    deps: [check-deps]
+    cmds:
+      - cd tests && task default
+
+  test:unit:
+    desc: Run unit tests only
+    cmds:
+      - cd tests && task unit
+
+  test:integration:
+    desc: Run integration tests
+    cmds:
+      - echo "Starting NATS for integration tests..."
+      - task: infra:start-dev
+      - sleep 2
+      - cd tests && task integration
+
+  test:watch:
+    desc: Watch for changes and run tests
+    cmds:
+      - cd tests && task watch
+
+  test:setup:
+    desc: Setup test environment
+    cmds:
+      - cd tests && task setup
 
   # Development helpers
   nats-cli:

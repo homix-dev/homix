@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "NATS Server Connection",
+        "description": "Configure connection to your NATS server. [Documentation]({docs_url})",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "name": "Name (optional)",
+          "discovery_prefix": "Discovery prefix",
+          "command_timeout": "Command timeout (seconds)"
+        }
+      },
+      "auth": {
+        "title": "Authentication",
+        "description": "Configure authentication for {host}. Leave empty for no authentication.",
+        "data": {
+          "token": "Token",
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to NATS server",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This NATS server is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "NATS Bridge Options",
+        "data": {
+          "discovery_prefix": "Discovery prefix",
+          "command_timeout": "Command timeout (seconds)"
+        }
+      }
+    }
+  },
+  "device": {
+    "manufacturer": {
+      "unknown": "Unknown"
+    },
+    "model": {
+      "unknown": "Unknown"
+    }
+  }
+}

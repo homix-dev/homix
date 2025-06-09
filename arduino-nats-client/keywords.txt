@@ -1,0 +1,48 @@
+#######################################
+# Syntax Coloring Map for NATSClient
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+NATSClient	KEYWORD1
+MessageHandler	KEYWORD1
+ConnectionHandler	KEYWORD1
+NATSMessage	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+connect	KEYWORD2
+disconnect	KEYWORD2
+connected	KEYWORD2
+loop	KEYWORD2
+publish	KEYWORD2
+subscribe	KEYWORD2
+unsubscribe	KEYWORD2
+request	KEYWORD2
+setDeviceInfo	KEYWORD2
+enableAutoDiscovery	KEYWORD2
+announceDevice	KEYWORD2
+onConnect	KEYWORD2
+onDisconnect	KEYWORD2
+setClientID	KEYWORD2
+setReconnect	KEYWORD2
+setPingInterval	KEYWORD2
+setVerbose	KEYWORD2
+isReconnecting	KEYWORD2
+getLastPingTime	KEYWORD2
+getLastError	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+NATS_DEFAULT_PORT	LITERAL1
+NATS_MAX_SUBJECT_LENGTH	LITERAL1
+NATS_MAX_PAYLOAD_SIZE	LITERAL1
+NATS_CONNECTION_TIMEOUT	LITERAL1
+NATS_PING_INTERVAL	LITERAL1
+NATS_MAX_RECONNECT_ATTEMPTS	LITERAL1

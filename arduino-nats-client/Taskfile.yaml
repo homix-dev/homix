@@ -1,0 +1,100 @@
+version: '3'
+
+vars:
+  LIBRARY_NAME: NATSClient
+  VERSION: 1.0.0
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  validate:
+    desc: Validate library structure
+    cmds:
+      - echo "Validating Arduino library structure..."
+      - test -f library.properties || (echo "Missing library.properties" && exit 1)
+      - test -f keywords.txt || (echo "Missing keywords.txt" && exit 1)
+      - test -f src/{{.LIBRARY_NAME}}.h || (echo "Missing header file" && exit 1)
+      - test -f src/{{.LIBRARY_NAME}}.cpp || (echo "Missing source file" && exit 1)
+      - test -d examples || (echo "Missing examples directory" && exit 1)
+      - echo "✓ Library structure is valid"
+
+  lint:
+    desc: Lint C++ code
+    cmds:
+      - echo "Linting C++ files..."
+      - find src examples -name "*.cpp" -o -name "*.h" -o -name "*.ino" | xargs -I {} echo "Checking {}"
+      # Add actual linting command if you have cpplint or similar installed
+      - echo "✓ Linting complete"
+
+  compile-examples:
+    desc: Compile examples (requires Arduino CLI)
+    cmds:
+      - echo "Compiling examples..."
+      - |
+        if command -v arduino-cli >/dev/null 2>&1; then
+          arduino-cli compile --fqbn esp32:esp32:esp32 examples/BasicPubSub
+          arduino-cli compile --fqbn esp32:esp32:esp32 examples/TemperatureSensor
+          arduino-cli compile --fqbn esp32:esp32:esp32 examples/SmartSwitch
+          echo "✓ Examples compiled successfully"
+        else
+          echo "Arduino CLI not found. Install from: https://arduino.github.io/arduino-cli/"
+          exit 1
+        fi
+
+  package:
+    desc: Create distributable ZIP file
+    vars:
+      ZIP_NAME: "{{.LIBRARY_NAME}}-{{.VERSION}}.zip"
+    cmds:
+      - echo "Creating library package..."
+      - rm -f {{.ZIP_NAME}}
+      - zip -r {{.ZIP_NAME}} . -x "*.git*" -x "*.zip" -x "Taskfile.yaml"
+      - echo "✓ Created {{.ZIP_NAME}}"
+
+  install-local:
+    desc: Install library to Arduino libraries folder
+    vars:
+      ARDUINO_LIBS:
+        sh: |
+          if [ -d "$HOME/Documents/Arduino/libraries" ]; then
+            echo "$HOME/Documents/Arduino/libraries"
+          elif [ -d "$HOME/Arduino/libraries" ]; then
+            echo "$HOME/Arduino/libraries"
+          else
+            echo ""
+          fi
+    cmds:
+      - |
+        if [ -z "{{.ARDUINO_LIBS}}" ]; then
+          echo "Arduino libraries folder not found"
+          echo "Please specify with: task install-local ARDUINO_LIBS=/path/to/libraries"
+          exit 1
+        fi
+      - echo "Installing to {{.ARDUINO_LIBS}}/{{.LIBRARY_NAME}}"
+      - rm -rf "{{.ARDUINO_LIBS}}/{{.LIBRARY_NAME}}"
+      - cp -r . "{{.ARDUINO_LIBS}}/{{.LIBRARY_NAME}}"
+      - rm -f "{{.ARDUINO_LIBS}}/{{.LIBRARY_NAME}}/Taskfile.yaml"
+      - echo "✓ Library installed successfully"
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -f *.zip
+      - echo "✓ Cleaned"
+
+  update-version:
+    desc: Update library version
+    vars:
+      NEW_VERSION: '{{.NEW_VERSION}}'
+    cmds:
+      - |
+        if [ -z "{{.NEW_VERSION}}" ]; then
+          echo "Please specify version: task update-version NEW_VERSION=1.0.1"
+          exit 1
+        fi
+      - sed -i.bak 's/version=.*/version={{.NEW_VERSION}}/' library.properties
+      - rm -f library.properties.bak
+      - echo "✓ Updated version to {{.NEW_VERSION}}"

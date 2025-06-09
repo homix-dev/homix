@@ -1,0 +1,27 @@
+# Test requirements for Python tests
+
+# Testing frameworks
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0
+pytest-timeout>=2.1.0
+
+# NATS client for integration tests
+nats-py>=2.7.0
+
+# Home Assistant test utilities
+pytest-homeassistant-custom-component>=0.13.0
+
+# Code quality
+coverage>=7.3.0
+ruff>=0.1.0
+black>=23.0.0
+
+# Mocking
+responses>=0.23.0
+aioresponses>=0.7.4
+
+# Utilities
+python-dotenv>=1.0.0
+pyyaml>=6.0

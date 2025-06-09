@@ -1,0 +1,404 @@
+# Smart Relay Switch Template
+# Single or multi-channel relay control
+
+device_info:
+  device_type: "switch"
+  manufacturer: "Generic"
+  model: "ESP-Relay"
+  
+capabilities:
+  commands:
+    - "on"
+    - "off" 
+    - "toggle"
+    - "status"
+    - "timer"
+    - "schedule"
+    
+  features:
+    - physical_button
+    - led_indicator
+    - power_monitoring     # Optional
+    - timer_function
+    - schedule_support
+    
+  configurable:
+    - default_state        # After power loss
+    - button_mode         # Toggle/momentary
+    - led_brightness
+    - auto_off_timer
+
+# Default configuration
+configuration:
+  defaults:
+    default_state: "off"   # off, on, last
+    button_mode: "toggle"  # toggle, momentary
+    led_brightness: 100    # 0-100%
+    auto_off_timer: 0      # 0 = disabled, seconds
+
+# ESPHome Implementation
+esphome:
+  # Relay output
+  switch:
+    - platform: gpio
+      pin: GPIO12
+      name: "${device_name}"
+      id: relay
+      restore_mode: ${default_state}_DEFAULT
+      
+      on_turn_on:
+        then:
+          - lambda: |-
+              // Update state
+              id(switch_state) = true;
+              id(last_change) = millis();
+              id(switch_count) += 1;
+              
+              // Publish state
+              publishState();
+              
+              // LED feedback
+              id(status_led).turn_on();
+              
+              // Start auto-off timer if configured
+              if (id(auto_off_timer_value) > 0) {
+                id(auto_off_script).execute();
+              }
+              
+      on_turn_off:
+        then:
+          - lambda: |-
+              // Update state
+              id(switch_state) = false;
+              id(last_change) = millis();
+              
+              // Publish state
+              publishState();
+              
+              // LED feedback
+              id(status_led).turn_off();
+              
+              // Cancel auto-off timer
+              id(auto_off_script).stop();
+
+  # Physical button
+  binary_sensor:
+    - platform: gpio
+      pin:
+        number: GPIO0
+        mode: INPUT_PULLUP
+        inverted: true
+      name: "${device_name} Button"
+      id: button
+      
+      on_multi_click:
+        # Single click - toggle
+        - timing:
+            - ON for at most 1s
+            - OFF for at least 0.5s
+          then:
+            - switch.toggle: relay
+            
+        # Double click - timer mode
+        - timing:
+            - ON for at most 1s
+            - OFF for at most 1s
+            - ON for at most 1s
+            - OFF for at least 0.5s
+          then:
+            - lambda: |-
+                // Set 30 minute timer
+                id(timer_minutes) = 30;
+                id(relay).turn_on();
+                id(timer_script).execute();
+                
+        # Long press - reset
+        - timing:
+            - ON for at least 5s
+          then:
+            - button.press: restart_button
+
+  # Status LED
+  output:
+    - platform: gpio
+      pin: GPIO13
+      id: status_led_output
+      
+  light:
+    - platform: binary
+      name: "${device_name} Status LED"
+      output: status_led_output
+      id: status_led
+      internal: true
+
+  # Timer functionality
+  script:
+    - id: auto_off_script
+      mode: restart
+      then:
+        - delay: !lambda 'return id(auto_off_timer_value) * 1000;'
+        - switch.turn_off: relay
+        
+    - id: timer_script
+      mode: restart
+      then:
+        - lambda: |-
+            id(timer_end) = millis() + (id(timer_minutes) * 60000);
+        - while:
+            condition:
+              lambda: 'return millis() < id(timer_end);'
+            then:
+              - delay: 1s
+        - switch.turn_off: relay
+
+  # Configuration parameters
+  number:
+    - platform: template
+      name: "${device_name} Auto Off Timer"
+      id: auto_off_timer_value
+      min_value: 0
+      max_value: 3600
+      step: 60
+      unit_of_measurement: "s"
+      optimistic: true
+
+  # Global variables
+  globals:
+    - id: switch_state
+      type: bool
+      initial_value: 'false'
+    - id: switch_count
+      type: int
+      initial_value: '0'
+    - id: last_change
+      type: unsigned long
+      initial_value: '0'
+    - id: timer_minutes
+      type: int
+      initial_value: '0'
+    - id: timer_end
+      type: unsigned long
+      initial_value: '0'
+
+  # NATS command handling
+  custom_component:
+    lambda: |-
+      // Subscribe to commands
+      nats.subscribe("home.devices.switch.${device_id}.command", 
+        [](const char* data) {
+          // Parse command
+          auto cmd = parseJson(data);
+          
+          if (cmd["action"] == "on") {
+            id(relay).turn_on();
+          } else if (cmd["action"] == "off") {
+            id(relay).turn_off();
+          } else if (cmd["action"] == "toggle") {
+            id(relay).toggle();
+          } else if (cmd["action"] == "timer") {
+            int minutes = cmd["duration"];
+            id(timer_minutes) = minutes;
+            id(relay).turn_on();
+            id(timer_script).execute();
+          }
+        }
+      );
+      
+      // Publish state function
+      auto publishState = []() {
+        char payload[256];
+        sprintf(payload,
+          "{\"device_id\":\"${device_id}\","
+          "\"state\":\"%s\","
+          "\"timer_active\":%s,"
+          "\"timer_remaining\":%d,"
+          "\"switch_count\":%d,"
+          "\"last_change\":%lu}",
+          id(switch_state) ? "on" : "off",
+          id(timer_end) > millis() ? "true" : "false",
+          id(timer_end) > millis() ? (id(timer_end) - millis()) / 1000 : 0,
+          id(switch_count),
+          id(last_change) / 1000
+        );
+        
+        nats.publish("home.devices.switch.${device_id}.state", payload);
+      };
+
+# Arduino Implementation
+arduino:
+  required_libraries:
+    - NATSClient
+    
+  example_code: |
+    #include <NATSClient.h>
+    
+    // Pin definitions
+    const int RELAY_PIN = 12;
+    const int BUTTON_PIN = 0;
+    const int LED_PIN = 13;
+    
+    // Device info
+    const char* deviceId = "${device_id}";
+    
+    // State variables
+    bool switchState = false;
+    bool lastButtonState = HIGH;
+    unsigned long lastDebounceTime = 0;
+    unsigned long debounceDelay = 50;
+    unsigned long switchCount = 0;
+    unsigned long lastStateChange = 0;
+    
+    // Timer variables
+    bool timerActive = false;
+    unsigned long timerStart = 0;
+    unsigned long timerDuration = 0;
+    
+    NATSClient nats;
+    
+    void setup() {
+      pinMode(RELAY_PIN, OUTPUT);
+      pinMode(BUTTON_PIN, INPUT_PULLUP);
+      pinMode(LED_PIN, OUTPUT);
+      
+      digitalWrite(RELAY_PIN, LOW);
+      
+      nats.connect("${nats_server}", ${nats_port});
+      nats.subscribe("home.devices.switch.${device_id}.command", handleCommand);
+      
+      announceDevice();
+    }
+    
+    void loop() {
+      nats.loop();
+      checkButton();
+      checkTimer();
+      
+      // Publish state periodically
+      static unsigned long lastPublish = 0;
+      if (millis() - lastPublish > 30000) {
+        lastPublish = millis();
+        publishState();
+      }
+    }
+    
+    void handleCommand(const char* subject, const char* data, const char* reply) {
+      // Parse JSON command
+      if (strstr(data, "\"action\":\"on\"")) {
+        setSwitchState(true);
+      } else if (strstr(data, "\"action\":\"off\"")) {
+        setSwitchState(false);
+      } else if (strstr(data, "\"action\":\"toggle\"")) {
+        setSwitchState(!switchState);
+      } else if (strstr(data, "\"action\":\"timer\"")) {
+        // Extract duration
+        int duration = 30; // Default 30 minutes
+        char* ptr = strstr(data, "\"duration\":");
+        if (ptr) {
+          duration = atoi(ptr + 11);
+        }
+        startTimer(duration);
+      }
+      
+      // Send response
+      if (reply) {
+        char response[64];
+        sprintf(response, "{\"status\":\"%s\"}", switchState ? "on" : "off");
+        nats.publish(reply, response);
+      }
+    }
+    
+    void setSwitchState(bool state) {
+      if (state != switchState) {
+        switchState = state;
+        digitalWrite(RELAY_PIN, state ? HIGH : LOW);
+        digitalWrite(LED_PIN, state ? HIGH : LOW);
+        lastStateChange = millis();
+        switchCount++;
+        
+        publishState();
+        publishEvent(state ? "switched_on" : "switched_off");
+      }
+    }
+    
+    void checkButton() {
+      int reading = digitalRead(BUTTON_PIN);
+      
+      if (reading != lastButtonState) {
+        lastDebounceTime = millis();
+      }
+      
+      if ((millis() - lastDebounceTime) > debounceDelay) {
+        if (reading == LOW && lastButtonState == HIGH) {
+          // Button pressed
+          setSwitchState(!switchState);
+        }
+      }
+      
+      lastButtonState = reading;
+    }
+    
+    void startTimer(int minutes) {
+      timerActive = true;
+      timerStart = millis();
+      timerDuration = minutes * 60000L;
+      setSwitchState(true);
+    }
+    
+    void checkTimer() {
+      if (timerActive && (millis() - timerStart >= timerDuration)) {
+        timerActive = false;
+        setSwitchState(false);
+      }
+    }
+
+# Power monitoring addon (optional)
+power_monitoring:
+  sensor:
+    - platform: hlw8012
+      sel_pin: GPIO5
+      cf_pin: GPIO14
+      cf1_pin: GPIO13
+      current:
+        name: "${device_name} Current"
+      voltage:
+        name: "${device_name} Voltage"
+      power:
+        name: "${device_name} Power"
+        on_value:
+          then:
+            - lambda: |-
+                // Report power usage
+                char payload[128];
+                sprintf(payload, 
+                  "{\"power\":%.1f,\"voltage\":%.1f,\"current\":%.2f}",
+                  x, id(voltage).state, id(current).state
+                );
+                nats.publish("home.devices.switch.${device_id}.power", payload);
+
+# Wiring diagrams
+wiring:
+  basic_relay:
+    relay_module:
+      vcc: "5V"
+      gnd: "GND"
+      in: "GPIO12"
+    button:
+      pin1: "GPIO0"
+      pin2: "GND"
+    led:
+      anode: "GPIO13 (through 220Ω resistor)"
+      cathode: "GND"
+      
+  ac_wiring:
+    warning: "⚡ HIGH VOLTAGE - Hire an electrician!"
+    line_in: "Relay COM"
+    line_out: "Relay NO"
+    neutral: "Direct connection"
+    
+# Safety notes
+safety:
+  - "Always use proper relay modules with optoisolation"
+  - "Never work on AC wiring while powered"
+  - "Use appropriate wire gauge for current"
+  - "Install in proper electrical enclosure"
+  - "Add fuse/breaker protection"

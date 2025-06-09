@@ -1,0 +1,545 @@
+# Smart Thermostat Template
+# For HVAC control and climate management
+
+device_info:
+  device_type: "climate"
+  manufacturer: "Generic"
+  model: "Smart-Thermostat"
+  
+capabilities:
+  modes:
+    - "off"
+    - "heat"
+    - "cool"
+    - "heat_cool"  # Auto mode
+    - "fan_only"
+    
+  fan_modes:
+    - "auto"
+    - "low"
+    - "medium"
+    - "high"
+    - "circulate"
+    
+  features:
+    - temperature_control
+    - humidity_monitoring
+    - scheduling
+    - presence_detection
+    - energy_saving
+    - remote_sensors
+    
+  configurable:
+    - temperature_unit     # C or F
+    - deadband            # Heat/cool separation
+    - min_temperature
+    - max_temperature
+    - schedule_enabled
+    - eco_mode
+
+# Default configuration
+configuration:
+  defaults:
+    temperature_unit: "C"
+    deadband: 2.0         # degrees
+    min_temperature: 10   # degrees
+    max_temperature: 32   # degrees
+    schedule_enabled: true
+    eco_mode: true
+    swing_mode: false
+
+# ESPHome Implementation
+esphome:
+  # Temperature sensor
+  sensor:
+    - platform: dht
+      pin: GPIO23
+      model: DHT22
+      temperature:
+        name: "${device_name} Temperature"
+        id: current_temp
+        filters:
+          - sliding_window_moving_average:
+              window_size: 5
+              send_every: 1
+      humidity:
+        name: "${device_name} Humidity"
+        id: current_humidity
+      update_interval: 30s
+      
+    # External temperature (optional)
+    - platform: template
+      name: "${device_name} External Temperature"
+      id: external_temp
+      lambda: |-
+        // Subscribe to external sensor via NATS
+        return id(remote_temperature);
+
+  # Relay outputs for HVAC
+  switch:
+    - platform: gpio
+      pin: GPIO18
+      name: "${device_name} Heat"
+      id: heat_relay
+      interlock: [cool_relay]  # Prevent simultaneous heat/cool
+      on_turn_on:
+        - lambda: |-
+            id(hvac_state) = "heating";
+            publishState();
+            
+    - platform: gpio
+      pin: GPIO19
+      name: "${device_name} Cool"
+      id: cool_relay
+      interlock: [heat_relay]
+      on_turn_on:
+        - lambda: |-
+            id(hvac_state) = "cooling";
+            publishState();
+            
+    - platform: gpio
+      pin: GPIO21
+      name: "${device_name} Fan"
+      id: fan_relay
+      on_turn_on:
+        - lambda: |-
+            if (id(hvac_state) == "idle") {
+              id(hvac_state) = "fan";
+            }
+            publishState();
+
+  # Climate component
+  climate:
+    - platform: thermostat
+      name: "${device_name}"
+      id: thermostat
+      sensor: current_temp
+      
+      min_idle_time: 300s       # 5 minute minimum off
+      min_cooling_off_time: 300s
+      min_cooling_run_time: 300s
+      min_heating_off_time: 300s
+      min_heating_run_time: 300s
+      
+      supplemental_cooling_delta: 2.0
+      supplemental_heating_delta: 2.0
+      
+      cool_deadband: 0.5
+      cool_overrun: 0.5
+      heat_deadband: 0.5
+      heat_overrun: 0.5
+      
+      cool_action:
+        - switch.turn_on: cool_relay
+        - switch.turn_on: fan_relay
+        
+      heat_action:
+        - switch.turn_on: heat_relay
+        - switch.turn_on: fan_relay
+        
+      idle_action:
+        - switch.turn_off: heat_relay
+        - switch.turn_off: cool_relay
+        - lambda: |-
+            if (id(fan_mode) != "auto") {
+              id(fan_relay).turn_on();
+            } else {
+              id(fan_relay).turn_off();
+            }
+            id(hvac_state) = "idle";
+            publishState();
+            
+      fan_only_action:
+        - switch.turn_on: fan_relay
+        - switch.turn_off: heat_relay
+        - switch.turn_off: cool_relay
+        
+      default_preset: Home
+      on_boot_restore_from: default_preset
+      
+      preset:
+        - name: Home
+          default_target_temperature_low: 20
+          default_target_temperature_high: 24
+          mode: heat_cool
+          
+        - name: Away
+          default_target_temperature_low: 16
+          default_target_temperature_high: 28
+          mode: heat_cool
+          
+        - name: Sleep
+          default_target_temperature_low: 18
+          default_target_temperature_high: 22
+          mode: heat_cool
+          
+        - name: Eco
+          default_target_temperature_low: 16
+          default_target_temperature_high: 26
+          mode: heat_cool
+
+  # Presence detection
+  binary_sensor:
+    - platform: template
+      name: "${device_name} Occupancy"
+      id: occupancy
+      lambda: |-
+        // Use motion sensors or phone presence
+        return id(presence_detected);
+      on_state:
+        then:
+          - lambda: |-
+              if (x) {
+                // Someone home
+                id(thermostat).set_preset("Home");
+              } else {
+                // Nobody home
+                id(thermostat).set_preset("Away");
+              }
+
+  # Schedule
+  time:
+    - platform: sntp
+      on_time:
+        # Morning - Wake up
+        - hours: 6
+          minutes: 0
+          days_of_week: MON-FRI
+          then:
+            - climate.control:
+                id: thermostat
+                preset: Home
+                
+        # Morning - Weekend
+        - hours: 8
+          minutes: 0
+          days_of_week: SAT,SUN
+          then:
+            - climate.control:
+                id: thermostat
+                preset: Home
+                
+        # Day - Leave for work
+        - hours: 8
+          minutes: 0
+          days_of_week: MON-FRI
+          then:
+            - climate.control:
+                id: thermostat
+                preset: Away
+                
+        # Evening - Return home
+        - hours: 17
+          minutes: 30
+          days_of_week: MON-FRI
+          then:
+            - climate.control:
+                id: thermostat
+                preset: Home
+                
+        # Night - Sleep
+        - hours: 22
+          minutes: 30
+          then:
+            - climate.control:
+                id: thermostat
+                preset: Sleep
+
+  # Display (optional)
+  display:
+    - platform: ssd1306_i2c
+      model: "SSD1306 128x64"
+      address: 0x3C
+      lambda: |-
+        // Display current temp
+        it.printf(0, 0, id(font_large), "%.1f°", 
+          id(current_temp).state);
+          
+        // Display set temp
+        it.printf(64, 0, id(font_medium), "Set: %.1f°", 
+          id(thermostat).target_temperature);
+          
+        // Display mode
+        it.printf(0, 32, id(font_small), "Mode: %s", 
+          id(thermostat).mode.c_str());
+          
+        // Display state
+        it.printf(0, 48, id(font_small), "State: %s", 
+          id(hvac_state).c_str());
+
+  # Rotary encoder for adjustment
+  sensor:
+    - platform: rotary_encoder
+      name: "${device_name} Encoder"
+      pin_a: GPIO14
+      pin_b: GPIO27
+      on_value:
+        then:
+          - lambda: |-
+              float new_temp = id(thermostat).target_temperature + x;
+              if (new_temp >= ${min_temperature} && 
+                  new_temp <= ${max_temperature}) {
+                auto call = id(thermostat).make_call();
+                call.set_target_temperature(new_temp);
+                call.perform();
+              }
+
+  # Global variables
+  globals:
+    - id: hvac_state
+      type: std::string
+      initial_value: '"idle"'
+    - id: fan_mode
+      type: std::string
+      initial_value: '"auto"'
+    - id: presence_detected
+      type: bool
+      initial_value: 'false'
+    - id: remote_temperature
+      type: float
+      initial_value: '20.0'
+
+  # NATS integration
+  custom_component:
+    lambda: |-
+      // Subscribe to commands
+      nats.subscribe("home.devices.climate.${device_id}.command",
+        [](const char* data) {
+          auto cmd = parseJson(data);
+          auto call = id(thermostat).make_call();
+          
+          if (cmd.containsKey("mode")) {
+            call.set_mode(cmd["mode"]);
+          }
+          
+          if (cmd.containsKey("temperature")) {
+            call.set_target_temperature(cmd["temperature"]);
+          }
+          
+          if (cmd.containsKey("preset")) {
+            call.set_preset(cmd["preset"]);
+          }
+          
+          if (cmd.containsKey("fan_mode")) {
+            id(fan_mode) = cmd["fan_mode"].as<std::string>();
+          }
+          
+          call.perform();
+        }
+      );
+      
+      // Subscribe to remote sensors
+      nats.subscribe("home.sensors.temperature.+", 
+        [](const char* data) {
+          auto msg = parseJson(data);
+          if (msg["sensor_id"] == "${remote_sensor_id}") {
+            id(remote_temperature) = msg["temperature"];
+          }
+        }
+      );
+      
+      // Publish state function
+      auto publishState = []() {
+        char payload[512];
+        sprintf(payload,
+          "{\"device_id\":\"${device_id}\","
+          "\"mode\":\"%s\","
+          "\"state\":\"%s\","
+          "\"current_temperature\":%.1f,"
+          "\"target_temperature\":%.1f,"
+          "\"target_temperature_low\":%.1f,"
+          "\"target_temperature_high\":%.1f,"
+          "\"humidity\":%.1f,"
+          "\"preset\":\"%s\","
+          "\"fan_mode\":\"%s\"}",
+          id(thermostat).mode.c_str(),
+          id(hvac_state).c_str(),
+          id(current_temp).state,
+          id(thermostat).target_temperature,
+          id(thermostat).target_temperature_low,
+          id(thermostat).target_temperature_high,
+          id(current_humidity).state,
+          id(thermostat).preset.c_str(),
+          id(fan_mode).c_str()
+        );
+        
+        nats.publish("home.devices.climate.${device_id}.state", payload);
+      };
+
+# Arduino Implementation (simplified)
+arduino:
+  example_code: |
+    #include <DHT.h>
+    #include <NATSClient.h>
+    
+    #define DHT_PIN 23
+    #define HEAT_PIN 18
+    #define COOL_PIN 19
+    #define FAN_PIN 21
+    
+    DHT dht(DHT_PIN, DHT22);
+    NATSClient nats;
+    
+    // Thermostat state
+    struct {
+      String mode = "off";
+      float currentTemp = 0;
+      float targetTemp = 22;
+      float humidity = 0;
+      String state = "idle";
+      unsigned long lastRun = 0;
+    } thermostat;
+    
+    const unsigned long MIN_RUN_TIME = 300000;  // 5 minutes
+    const float DEADBAND = 0.5;
+    
+    void setup() {
+      pinMode(HEAT_PIN, OUTPUT);
+      pinMode(COOL_PIN, OUTPUT);
+      pinMode(FAN_PIN, OUTPUT);
+      
+      dht.begin();
+      nats.connect("${nats_server}", ${nats_port});
+      nats.subscribe("home.devices.climate.${device_id}.command", handleCommand);
+      
+      announceDevice();
+    }
+    
+    void loop() {
+      nats.loop();
+      
+      static unsigned long lastUpdate = 0;
+      if (millis() - lastUpdate > 30000) {
+        lastUpdate = millis();
+        updateThermostat();
+      }
+    }
+    
+    void updateThermostat() {
+      // Read sensors
+      thermostat.currentTemp = dht.readTemperature();
+      thermostat.humidity = dht.readHumidity();
+      
+      // Check if we can change state (minimum run time)
+      if (millis() - thermostat.lastRun < MIN_RUN_TIME) {
+        return;
+      }
+      
+      // Control logic
+      if (thermostat.mode == "heat") {
+        if (thermostat.currentTemp < thermostat.targetTemp - DEADBAND) {
+          startHeating();
+        } else if (thermostat.currentTemp > thermostat.targetTemp + DEADBAND) {
+          stopHVAC();
+        }
+      } else if (thermostat.mode == "cool") {
+        if (thermostat.currentTemp > thermostat.targetTemp + DEADBAND) {
+          startCooling();
+        } else if (thermostat.currentTemp < thermostat.targetTemp - DEADBAND) {
+          stopHVAC();
+        }
+      } else if (thermostat.mode == "off") {
+        stopHVAC();
+      }
+      
+      publishState();
+    }
+    
+    void startHeating() {
+      digitalWrite(COOL_PIN, LOW);
+      digitalWrite(HEAT_PIN, HIGH);
+      digitalWrite(FAN_PIN, HIGH);
+      thermostat.state = "heating";
+      thermostat.lastRun = millis();
+    }
+    
+    void startCooling() {
+      digitalWrite(HEAT_PIN, LOW);
+      digitalWrite(COOL_PIN, HIGH);
+      digitalWrite(FAN_PIN, HIGH);
+      thermostat.state = "cooling";
+      thermostat.lastRun = millis();
+    }
+    
+    void stopHVAC() {
+      digitalWrite(HEAT_PIN, LOW);
+      digitalWrite(COOL_PIN, LOW);
+      digitalWrite(FAN_PIN, LOW);
+      thermostat.state = "idle";
+    }
+
+# HVAC wiring
+wiring:
+  standard_hvac:
+    R: "24VAC power (red)"
+    C: "24VAC common (blue)"
+    W: "Heat (white) -> GPIO18"
+    Y: "Cool (yellow) -> GPIO19"
+    G: "Fan (green) -> GPIO21"
+    
+  heat_pump:
+    O: "Reversing valve (orange)"
+    B: "Reversing valve (alternative)"
+    W2: "Auxiliary heat"
+    Y2: "Second stage cooling"
+    
+  relay_board:
+    - "Use 24VAC relays"
+    - "Optoisolation recommended"
+    - "Snubber circuits for inductive loads"
+
+# Energy saving features
+energy_saving:
+  eco_mode:
+    - "Wider temperature range when away"
+    - "Reduce fan usage"
+    - "Adaptive recovery"
+    
+  smart_scheduling:
+    - "Learn occupancy patterns"
+    - "Pre-heat/cool optimization"
+    - "Weather forecast integration"
+    
+  demand_response:
+    - "Utility program integration"
+    - "Peak demand reduction"
+    - "Time-of-use optimization"
+
+# Automation examples
+automation_examples:
+  # Geofencing
+  geofencing:
+    trigger: "phone.location = approaching_home"
+    condition: "distance < 5km"
+    action: "thermostat.preset('Home')"
+    
+  # Window open detection
+  window_open:
+    trigger: "window.state = open"
+    action: "thermostat.mode('off')"
+    
+  # Smart recovery
+  smart_recovery:
+    trigger: "time = wake_time - recovery_time"
+    action: "thermostat.preheat(target_temp)"
+    
+  # Filter reminder
+  filter_reminder:
+    trigger: "hvac.runtime > 720 hours"
+    action: "notify('Change HVAC filter')"
+
+# Safety features
+safety:
+  - "Compressor protection delays"
+  - "Temperature limit checking"
+  - "Failsafe on sensor failure"
+  - "Anti-freeze protection"
+  - "Equipment runtime monitoring"
+
+# Notes
+notes:
+  - "Professional installation recommended"
+  - "Follow local HVAC codes"
+  - "24VAC transformer required"
+  - "Compatible with most HVAC systems"
+  - "Consider professional C-wire installation"

@@ -1,0 +1,428 @@
+# Air Quality Sensor Template
+# CO2, VOC, and PM2.5 monitoring
+
+device_info:
+  device_type: "sensor"
+  manufacturer: "Generic"
+  model: "AQ-Monitor"
+  
+capabilities:
+  sensors:
+    - co2           # ppm
+    - voc           # ppb
+    - pm25          # µg/m³
+    - pm10          # µg/m³
+    - temperature   # °C
+    - humidity      # %
+    
+  units:
+    co2: "ppm"
+    voc: "ppb"
+    pm25: "µg/m³"
+    pm10: "µg/m³"
+    temperature: "°C"
+    humidity: "%"
+    
+  features:
+    - air_quality_index
+    - health_recommendations
+    - trend_analysis
+    - calibration_mode
+    
+  configurable:
+    - update_interval
+    - co2_baseline
+    - alert_thresholds
+    - averaging_period
+
+# Default configuration
+configuration:
+  defaults:
+    update_interval: 60
+    co2_baseline: 400      # Outdoor baseline
+    averaging_period: 300  # 5 minutes
+    alert_thresholds:
+      co2_warning: 1000
+      co2_critical: 2000
+      pm25_warning: 35
+      pm25_critical: 55
+
+# ESPHome Implementation with SGP30 + PMS5003
+esphome:
+  # I2C for SGP30
+  i2c:
+    sda: GPIO21
+    scl: GPIO22
+    
+  # UART for PMS5003
+  uart:
+    tx_pin: GPIO17
+    rx_pin: GPIO16
+    baud_rate: 9600
+    
+  sensor:
+    # SGP30 CO2/VOC sensor
+    - platform: sgp30
+      eco2:
+        name: "${device_name} CO2"
+        id: co2_sensor
+        filters:
+          - sliding_window_moving_average:
+              window_size: 5
+              send_every: 1
+        on_value:
+          then:
+            - lambda: |-
+                // CO2 level alerts
+                static bool warning_sent = false;
+                static bool critical_sent = false;
+                
+                if (x > ${alert_thresholds.co2_critical} && !critical_sent) {
+                  critical_sent = true;
+                  warning_sent = true;
+                  sendAlert("co2_critical", x);
+                } else if (x > ${alert_thresholds.co2_warning} && !warning_sent) {
+                  warning_sent = true;
+                  sendAlert("co2_warning", x);
+                } else if (x < ${alert_thresholds.co2_warning}) {
+                  warning_sent = false;
+                  critical_sent = false;
+                }
+                
+      tvoc:
+        name: "${device_name} VOC"
+        id: voc_sensor
+        
+      baseline:
+        eco2_baseline: 0x8E68
+        tvoc_baseline: 0x8F66
+        
+      compensation:
+        temperature_source: temp_sensor
+        humidity_source: humidity_sensor
+        
+      update_interval: 1s
+      
+    # PMS5003 Particulate sensor
+    - platform: pmsx003
+      type: PMS5003T
+      
+      pm_2_5:
+        name: "${device_name} PM2.5"
+        id: pm25_sensor
+        filters:
+          - sliding_window_moving_average:
+              window_size: 5
+              send_every: 1
+        on_value:
+          then:
+            - lambda: |-
+                // PM2.5 alerts
+                if (x > ${alert_thresholds.pm25_critical}) {
+                  sendAlert("pm25_critical", x);
+                } else if (x > ${alert_thresholds.pm25_warning}) {
+                  sendAlert("pm25_warning", x);
+                }
+                
+      pm_10_0:
+        name: "${device_name} PM10"
+        id: pm10_sensor
+        
+      temperature:
+        name: "${device_name} Temperature"
+        id: temp_sensor
+        
+      humidity:
+        name: "${device_name} Humidity"
+        id: humidity_sensor
+        
+      update_interval: 60s
+      
+    # Air Quality Index calculation
+    - platform: template
+      name: "${device_name} AQI"
+      id: aqi_sensor
+      unit_of_measurement: ""
+      lambda: |-
+        // Calculate AQI based on PM2.5
+        float pm25 = id(pm25_sensor).state;
+        
+        if (pm25 <= 12.0) return (50.0/12.0) * pm25;
+        else if (pm25 <= 35.4) return 50 + (50.0/23.4) * (pm25 - 12.0);
+        else if (pm25 <= 55.4) return 100 + (50.0/20.0) * (pm25 - 35.4);
+        else if (pm25 <= 150.4) return 150 + (50.0/95.0) * (pm25 - 55.4);
+        else if (pm25 <= 250.4) return 200 + (100.0/100.0) * (pm25 - 150.4);
+        else if (pm25 <= 350.4) return 300 + (100.0/100.0) * (pm25 - 250.4);
+        else return 400 + (100.0/150.0) * (pm25 - 350.4);
+        
+      update_interval: 60s
+      
+    # Health recommendation
+    - platform: template
+      name: "${device_name} Health Level"
+      id: health_level
+      lambda: |-
+        float aqi = id(aqi_sensor).state;
+        
+        if (aqi <= 50) return 0;       // Good
+        else if (aqi <= 100) return 1; // Moderate  
+        else if (aqi <= 150) return 2; // Unhealthy for sensitive
+        else if (aqi <= 200) return 3; // Unhealthy
+        else if (aqi <= 300) return 4; // Very unhealthy
+        else return 5;                  // Hazardous
+
+  # Text sensor for health recommendation
+  text_sensor:
+    - platform: template
+      name: "${device_name} Recommendation"
+      id: health_recommendation
+      lambda: |-
+        int level = id(health_level).state;
+        
+        switch(level) {
+          case 0: return "Good - Air quality is satisfactory";
+          case 1: return "Moderate - Acceptable for most";
+          case 2: return "Unhealthy for sensitive groups";
+          case 3: return "Unhealthy - Everyone may experience effects";
+          case 4: return "Very Unhealthy - Health warnings";
+          case 5: return "Hazardous - Emergency conditions";
+          default: return "Unknown";
+        }
+
+  # State publishing
+  interval:
+    - interval: ${update_interval}s
+      then:
+        - lambda: |-
+            char payload[1024];
+            sprintf(payload,
+              "{\"device_id\":\"${device_id}\","
+              "\"timestamp\":%lu,"
+              "\"sensors\":{"
+                "\"co2\":%.0f,"
+                "\"voc\":%.0f,"
+                "\"pm25\":%.1f,"
+                "\"pm10\":%.1f,"
+                "\"temperature\":%.1f,"
+                "\"humidity\":%.1f"
+              "},"
+              "\"air_quality\":{"
+                "\"aqi\":%.0f,"
+                "\"level\":\"%s\","
+                "\"recommendation\":\"%s\""
+              "}}",
+              millis()/1000,
+              id(co2_sensor).state,
+              id(voc_sensor).state,
+              id(pm25_sensor).state,
+              id(pm10_sensor).state,
+              id(temp_sensor).state,
+              id(humidity_sensor).state,
+              id(aqi_sensor).state,
+              getAQILevel(id(aqi_sensor).state),
+              id(health_recommendation).state.c_str()
+            );
+            
+            nats.publish("home.devices.sensor.${device_id}.state", payload);
+
+# Arduino Implementation
+arduino:
+  required_libraries:
+    - Adafruit SGP30
+    - PMS Library
+    
+  example_code: |
+    #include <Wire.h>
+    #include <Adafruit_SGP30.h>
+    #include <PMS.h>
+    #include <NATSClient.h>
+    
+    Adafruit_SGP30 sgp;
+    PMS pms(Serial2);
+    PMS::DATA pmsData;
+    
+    NATSClient nats;
+    const char* deviceId = "${device_id}";
+    
+    // Sensor readings
+    struct {
+      uint16_t co2 = 400;
+      uint16_t voc = 0;
+      uint16_t pm25 = 0;
+      uint16_t pm10 = 0;
+      float temp = 0;
+      float humidity = 0;
+    } readings;
+    
+    // Alert thresholds
+    const uint16_t CO2_WARNING = ${alert_thresholds.co2_warning};
+    const uint16_t CO2_CRITICAL = ${alert_thresholds.co2_critical};
+    const uint16_t PM25_WARNING = ${alert_thresholds.pm25_warning};
+    const uint16_t PM25_CRITICAL = ${alert_thresholds.pm25_critical};
+    
+    void setup() {
+      Serial.begin(115200);
+      Serial2.begin(9600);
+      Wire.begin();
+      
+      if (!sgp.begin()) {
+        Serial.println("SGP30 not found");
+        while(1);
+      }
+      
+      // Set baseline if available
+      // sgp.setIAQBaseline(0x8E68, 0x8F66);
+      
+      nats.connect("${nats_server}", ${nats_port});
+      announceDevice();
+    }
+    
+    void loop() {
+      nats.loop();
+      
+      static unsigned long lastUpdate = 0;
+      if (millis() - lastUpdate > ${update_interval} * 1000) {
+        lastUpdate = millis();
+        
+        readSensors();
+        checkAlerts();
+        publishState();
+      }
+    }
+    
+    void readSensors() {
+      // Read SGP30
+      if (sgp.IAQmeasure()) {
+        readings.co2 = sgp.eCO2;
+        readings.voc = sgp.TVOC;
+      }
+      
+      // Read PMS5003
+      if (pms.read(pmsData)) {
+        readings.pm25 = pmsData.PM_AE_UG_2_5;
+        readings.pm10 = pmsData.PM_AE_UG_10_0;
+        
+        // Some PMS5003T models include temp/humidity
+        // readings.temp = pmsData.AMB_TMP;
+        // readings.humidity = pmsData.AMB_HUM;
+      }
+    }
+    
+    void checkAlerts() {
+      static bool co2Warning = false;
+      static bool co2Critical = false;
+      static bool pm25Warning = false;
+      
+      // CO2 alerts
+      if (readings.co2 > CO2_CRITICAL && !co2Critical) {
+        co2Critical = true;
+        sendAlert("co2_critical", readings.co2);
+      } else if (readings.co2 > CO2_WARNING && !co2Warning) {
+        co2Warning = true;
+        sendAlert("co2_warning", readings.co2);
+      } else if (readings.co2 < CO2_WARNING) {
+        co2Warning = false;
+        co2Critical = false;
+      }
+      
+      // PM2.5 alerts
+      if (readings.pm25 > PM25_CRITICAL) {
+        sendAlert("pm25_critical", readings.pm25);
+      } else if (readings.pm25 > PM25_WARNING && !pm25Warning) {
+        pm25Warning = true;
+        sendAlert("pm25_warning", readings.pm25);
+      } else if (readings.pm25 < PM25_WARNING) {
+        pm25Warning = false;
+      }
+    }
+    
+    float calculateAQI(float pm25) {
+      if (pm25 <= 12.0) return (50.0/12.0) * pm25;
+      else if (pm25 <= 35.4) return 50 + (50.0/23.4) * (pm25 - 12.0);
+      else if (pm25 <= 55.4) return 100 + (50.0/20.0) * (pm25 - 35.4);
+      else if (pm25 <= 150.4) return 150 + (50.0/95.0) * (pm25 - 55.4);
+      else if (pm25 <= 250.4) return 200 + (100.0/100.0) * (pm25 - 150.4);
+      else if (pm25 <= 350.4) return 300 + (100.0/100.0) * (pm25 - 350.4);
+      else return 400 + (100.0/150.0) * (pm25 - 350.4);
+    }
+
+# Health recommendations by level
+health_levels:
+  good:
+    aqi: [0, 50]
+    color: "green"
+    activities: "Normal activities"
+    windows: "Open windows for fresh air"
+    
+  moderate:
+    aqi: [51, 100]
+    color: "yellow"
+    activities: "Unusually sensitive people should reduce prolonged exertion"
+    windows: "Consider closing windows"
+    
+  unhealthy_sensitive:
+    aqi: [101, 150]
+    color: "orange"
+    activities: "Sensitive groups should reduce prolonged exertion"
+    windows: "Close windows"
+    
+  unhealthy:
+    aqi: [151, 200]
+    color: "red"
+    activities: "Everyone should avoid prolonged exertion"
+    windows: "Keep windows closed"
+    
+  very_unhealthy:
+    aqi: [201, 300]
+    color: "purple"
+    activities: "Everyone should avoid outdoor exertion"
+    windows: "Seal windows, run air purifier"
+    
+  hazardous:
+    aqi: [301, 500]
+    color: "maroon"
+    activities: "Everyone should avoid all outdoor activity"
+    windows: "Emergency conditions"
+
+# Automations
+automation_examples:
+  # Ventilation control
+  auto_ventilation:
+    trigger: "co2 > 1000 AND outdoor_aqi < 100"
+    action: "ventilation.fan.on()"
+    
+  # Air purifier control
+  purifier_control:
+    trigger: "pm25 > 35 OR aqi > 100"
+    action: "air_purifier.on()"
+    
+  # Alert on poor air quality
+  air_quality_alert:
+    trigger: "aqi > 150"
+    action: "notify('Poor air quality: AQI {aqi}')"
+    
+  # Window automation
+  window_control:
+    trigger: "outdoor_aqi < indoor_aqi - 50"
+    condition: "temperature.outside in comfortable_range"
+    action: "windows.open()"
+
+# Calibration
+calibration:
+  sgp30:
+    - "Run in clean air for 12 hours"
+    - "Save baseline values"
+    - "Restore after power cycle"
+    
+  pms5003:
+    - "Compare with reference meter"
+    - "Clean fan periodically"
+    - "Replace after 2-3 years"
+
+# Notes
+notes:
+  - "SGP30 needs 15 second warm-up"
+  - "PMS5003 lifetime ~2 years continuous"
+  - "Position away from direct airflow"
+  - "CO2 indicates ventilation effectiveness"
+  - "VOCs from cleaning products, cooking"

@@ -1,0 +1,460 @@
+# Power/Energy Monitor Template
+# For monitoring electrical consumption
+
+device_info:
+  device_type: "sensor"
+  manufacturer: "PZEM"
+  model: "PZEM-004T"  # Common energy monitor module
+  
+capabilities:
+  sensors:
+    - voltage
+    - current
+    - power
+    - energy
+    - power_factor
+    - frequency
+    
+  units:
+    voltage: "V"
+    current: "A"
+    power: "W"
+    energy: "kWh"
+    power_factor: ""
+    frequency: "Hz"
+    
+  features:
+    - real_time_monitoring
+    - energy_accumulation
+    - cost_calculation
+    - peak_detection
+    - alerts
+    
+  configurable:
+    - update_interval
+    - voltage_calibration
+    - current_calibration
+    - cost_per_kwh
+    - peak_threshold
+
+# Default configuration
+configuration:
+  defaults:
+    update_interval: 5          # seconds
+    voltage_calibration: 1.0    # multiplication factor
+    current_calibration: 1.0    # multiplication factor
+    cost_per_kwh: 0.12         # currency per kWh
+    peak_threshold: 3000        # Watts
+    currency: "USD"
+
+# ESPHome Implementation with PZEM-004T
+esphome:
+  uart:
+    tx_pin: GPIO17
+    rx_pin: GPIO16
+    baud_rate: 9600
+
+  sensor:
+    - platform: pzemac
+      current:
+        name: "${device_name} Current"
+        id: current_sensor
+        filters:
+          - multiply: ${current_calibration}
+          
+      voltage:
+        name: "${device_name} Voltage"
+        id: voltage_sensor
+        filters:
+          - multiply: ${voltage_calibration}
+          
+      power:
+        name: "${device_name} Power"
+        id: power_sensor
+        on_value:
+          then:
+            - lambda: |-
+                // Peak detection
+                static float peak_power = 0;
+                if (x > peak_power) {
+                  peak_power = x;
+                  id(peak_power_sensor).publish_state(peak_power);
+                }
+                
+                // Threshold alert
+                static bool peak_alert_sent = false;
+                if (x > ${peak_threshold} && !peak_alert_sent) {
+                  peak_alert_sent = true;
+                  char alert[256];
+                  sprintf(alert,
+                    "{\"device_id\":\"${device_id}\","
+                    "\"alert\":\"high_power_usage\","
+                    "\"power\":%.1f,"
+                    "\"threshold\":${peak_threshold}}",
+                    x
+                  );
+                  id(nats_client).publish("home.energy.alerts", alert);
+                } else if (x < ${peak_threshold} * 0.9) {
+                  peak_alert_sent = false;
+                }
+                
+      energy:
+        name: "${device_name} Energy"
+        id: energy_sensor
+        on_value:
+          then:
+            - lambda: |-
+                // Calculate cost
+                float cost = x * ${cost_per_kwh};
+                id(energy_cost_sensor).publish_state(cost);
+                
+      power_factor:
+        name: "${device_name} Power Factor"
+        id: power_factor_sensor
+        
+      frequency:
+        name: "${device_name} Frequency"
+        id: frequency_sensor
+        
+      update_interval: ${update_interval}s
+      
+    # Calculated sensors
+    - platform: template
+      name: "${device_name} Peak Power"
+      id: peak_power_sensor
+      unit_of_measurement: "W"
+      accuracy_decimals: 1
+      
+    - platform: template
+      name: "${device_name} Energy Cost"
+      id: energy_cost_sensor
+      unit_of_measurement: "${currency}"
+      accuracy_decimals: 2
+      
+    - platform: template
+      name: "${device_name} Daily Energy"
+      id: daily_energy_sensor
+      unit_of_measurement: "kWh"
+      accuracy_decimals: 3
+      
+    - platform: template
+      name: "${device_name} Daily Cost"
+      id: daily_cost_sensor
+      unit_of_measurement: "${currency}"
+      accuracy_decimals: 2
+
+  # Time-based calculations
+  time:
+    - platform: sntp
+      on_time:
+        # Reset daily counters at midnight
+        - seconds: 0
+          minutes: 0
+          hours: 0
+          then:
+            - lambda: |-
+                // Store yesterday's values
+                id(yesterday_energy) = id(daily_energy_sensor).state;
+                id(yesterday_cost) = id(daily_cost_sensor).state;
+                
+                // Reset daily counters
+                id(daily_energy_start) = id(energy_sensor).state;
+                id(daily_energy_sensor).publish_state(0);
+                id(daily_cost_sensor).publish_state(0);
+                
+                // Publish daily report
+                char report[512];
+                sprintf(report,
+                  "{\"device_id\":\"${device_id}\","
+                  "\"report\":\"daily_energy\","
+                  "\"date\":\"%s\","
+                  "\"energy\":%.3f,"
+                  "\"cost\":%.2f,"
+                  "\"avg_power\":%.1f}",
+                  id(sntp_time).now().strftime("%Y-%m-%d").c_str(),
+                  id(yesterday_energy),
+                  id(yesterday_cost),
+                  id(yesterday_energy) * 1000 / 24  // Average power
+                );
+                id(nats_client).publish("home.energy.reports", report);
+                
+        # Update daily totals every minute
+        - seconds: 0
+          minutes: /1
+          then:
+            - lambda: |-
+                float daily_energy = id(energy_sensor).state - id(daily_energy_start);
+                id(daily_energy_sensor).publish_state(daily_energy);
+                id(daily_cost_sensor).publish_state(daily_energy * ${cost_per_kwh});
+
+  # State publishing
+  interval:
+    - interval: ${update_interval}s
+      then:
+        - lambda: |-
+            // Publish comprehensive state
+            char payload[512];
+            sprintf(payload,
+              "{\"device_id\":\"${device_id}\","
+              "\"timestamp\":%lu,"
+              "\"instant\":{"
+                "\"voltage\":%.1f,"
+                "\"current\":%.2f,"
+                "\"power\":%.1f,"
+                "\"power_factor\":%.2f,"
+                "\"frequency\":%.1f"
+              "},"
+              "\"accumulated\":{"
+                "\"energy\":%.3f,"
+                "\"cost\":%.2f,"
+                "\"daily_energy\":%.3f,"
+                "\"daily_cost\":%.2f"
+              "}}",
+              millis()/1000,
+              id(voltage_sensor).state,
+              id(current_sensor).state,
+              id(power_sensor).state,
+              id(power_factor_sensor).state,
+              id(frequency_sensor).state,
+              id(energy_sensor).state,
+              id(energy_cost_sensor).state,
+              id(daily_energy_sensor).state,
+              id(daily_cost_sensor).state
+            );
+            
+            id(nats_client).publish(
+              "home.devices.sensor.${device_id}.state",
+              payload
+            );
+
+  # Global variables for calculations
+  globals:
+    - id: daily_energy_start
+      type: float
+      initial_value: '0'
+    - id: yesterday_energy
+      type: float
+      initial_value: '0'
+    - id: yesterday_cost
+      type: float
+      initial_value: '0'
+
+# Arduino Implementation with PZEM-004T
+arduino:
+  required_libraries:
+    - PZEM004Tv30
+    
+  example_code: |
+    #include <PZEM004Tv30.h>
+    #include <NATSClient.h>
+    
+    // PZEM on Hardware Serial2 (ESP32)
+    PZEM004Tv30 pzem(Serial2, 16, 17);  // RX, TX
+    
+    NATSClient nats;
+    const char* deviceId = "${device_id}";
+    
+    // Tracking variables
+    float dailyEnergyStart = 0;
+    float peakPower = 0;
+    unsigned long lastUpdate = 0;
+    
+    // Calibration
+    const float voltageCalibration = ${voltage_calibration};
+    const float currentCalibration = ${current_calibration};
+    const float costPerKwh = ${cost_per_kwh};
+    
+    void setup() {
+      Serial.begin(115200);
+      
+      nats.connect("${nats_server}", ${nats_port});
+      announceDevice();
+      
+      // Reset energy counter at startup (optional)
+      // pzem.resetEnergy();
+      
+      // Get initial energy reading
+      dailyEnergyStart = pzem.energy();
+    }
+    
+    void loop() {
+      nats.loop();
+      
+      if (millis() - lastUpdate > ${update_interval} * 1000) {
+        lastUpdate = millis();
+        readAndPublish();
+      }
+    }
+    
+    void readAndPublish() {
+      float voltage = pzem.voltage() * voltageCalibration;
+      float current = pzem.current() * currentCalibration;
+      float power = pzem.power();
+      float energy = pzem.energy();
+      float frequency = pzem.frequency();
+      float pf = pzem.pf();
+      
+      // Validate readings
+      if (isnan(voltage)) {
+        Serial.println("Error reading voltage");
+        return;
+      }
+      
+      // Update peak power
+      if (power > peakPower) {
+        peakPower = power;
+      }
+      
+      // Calculate daily energy
+      float dailyEnergy = energy - dailyEnergyStart;
+      float dailyCost = dailyEnergy * costPerKwh;
+      float totalCost = energy * costPerKwh;
+      
+      // Check for high power usage
+      if (power > ${peak_threshold}) {
+        sendAlert("high_power_usage", power);
+      }
+      
+      // Publish state
+      char payload[512];
+      sprintf(payload,
+        "{\"device_id\":\"%s\","
+        "\"timestamp\":%lu,"
+        "\"instant\":{"
+          "\"voltage\":%.1f,"
+          "\"current\":%.2f,"
+          "\"power\":%.1f,"
+          "\"power_factor\":%.2f,"
+          "\"frequency\":%.1f"
+        "},"
+        "\"accumulated\":{"
+          "\"energy\":%.3f,"
+          "\"cost\":%.2f,"
+          "\"daily_energy\":%.3f,"
+          "\"daily_cost\":%.2f,"
+          "\"peak_power\":%.1f"
+        "}}",
+        deviceId,
+        millis()/1000,
+        voltage, current, power, pf, frequency,
+        energy, totalCost, dailyEnergy, dailyCost, peakPower
+      );
+      
+      nats.publish("home.devices.sensor.${device_id}.state", payload);
+    }
+    
+    void sendAlert(const char* alertType, float value) {
+      char payload[256];
+      sprintf(payload,
+        "{\"device_id\":\"%s\","
+        "\"alert\":\"%s\","
+        "\"value\":%.1f,"
+        "\"timestamp\":%lu}",
+        deviceId, alertType, value, millis()/1000
+      );
+      
+      nats.publish("home.energy.alerts", payload);
+    }
+
+# Alternative sensors
+alternative_sensors:
+  # SCT-013 Current Transformer (non-invasive)
+  sct013:
+    platform: ct_clamp
+    advantages:
+      - "Non-invasive installation"
+      - "No electrical work required"
+      - "Safe for DIY"
+    limitations:
+      - "Current only (no voltage)"
+      - "Requires calibration"
+      - "Single phase only"
+      
+  # Shelly EM
+  shelly_em:
+    advantages:
+      - "WiFi built-in"
+      - "Professional grade"
+      - "Cloud optional"
+    integration: "MQTT to NATS bridge"
+    
+  # Sonoff POW
+  sonoff_pow:
+    advantages:
+      - "Integrated relay"
+      - "Tasmota compatible"
+      - "Cost effective"
+    limitations:
+      - "10A/16A max"
+
+# Energy analytics
+analytics:
+  patterns:
+    baseline:
+      description: "Minimum continuous load"
+      calculation: "Minimum 15-minute average"
+      
+    peak_hours:
+      description: "Highest usage periods"
+      typical: "6-9 AM, 5-8 PM"
+      
+    vampire_power:
+      description: "Standby consumption"
+      detection: "Nighttime baseline"
+      
+  cost_optimization:
+    time_of_use:
+      - "Track peak vs off-peak usage"
+      - "Shift loads to cheaper periods"
+      
+    demand_response:
+      - "Reduce peak demand charges"
+      - "Participate in utility programs"
+
+# Automations
+automation_examples:
+  # High usage alert
+  high_usage_alert:
+    trigger: "power > 5000W for 5 minutes"
+    action: "notify('High power usage: {power}W')"
+    
+  # Appliance detection
+  washer_complete:
+    trigger: "power < 10W after power > 500W for 30 minutes"
+    action: "notify('Washing machine cycle complete')"
+    
+  # Cost tracking
+  daily_cost_report:
+    trigger: "time = 20:00"
+    action: "notify('Today energy cost: ${daily_cost}')"
+    
+  # Load shedding
+  peak_demand_reduction:
+    trigger: "total_power > 8000W"
+    action:
+      - "climate.set_temperature(+2°C)"
+      - "water_heater.turn_off()"
+
+# Safety notes
+safety:
+  - "⚡ HIGH VOLTAGE - Professional installation required"
+  - "Use appropriate current transformers"
+  - "Install upstream of circuit breakers"
+  - "Follow local electrical codes"
+  - "Use isolation for electronics"
+
+# Calibration
+calibration:
+  voltage:
+    - "Measure with multimeter"
+    - "Adjust calibration factor"
+    
+  current:
+    - "Use known load (e.g., 1000W heater)"
+    - "Calculate expected current"
+    - "Adjust calibration factor"
+    
+  energy:
+    - "Compare with utility meter"
+    - "Track over 24 hours"
+    - "Fine-tune factors"

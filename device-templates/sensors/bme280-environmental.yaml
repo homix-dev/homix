@@ -1,0 +1,375 @@
+# BME280 Environmental Sensor Template
+# Temperature, Humidity, and Pressure sensor
+
+device_info:
+  device_type: "sensor"
+  manufacturer: "Bosch"
+  model: "BME280"
+  
+capabilities:
+  sensors:
+    - temperature
+    - humidity
+    - pressure
+    - altitude      # Calculated
+    - dew_point    # Calculated
+    
+  units:
+    temperature: "°C"
+    humidity: "%"
+    pressure: "hPa"
+    altitude: "m"
+    dew_point: "°C"
+    
+  accuracy:
+    temperature: 0.5
+    humidity: 3.0
+    pressure: 1.0
+    
+  configurable:
+    - update_interval
+    - temp_offset
+    - humidity_offset
+    - pressure_offset
+    - sea_level_pressure
+    - altitude_calculation
+
+# I2C Configuration
+i2c:
+  address: 0x76  # or 0x77
+  sda: GPIO21    # ESP32
+  scl: GPIO22    # ESP32
+  frequency: 100kHz
+
+# Default configuration
+configuration:
+  defaults:
+    update_interval: 60
+    temp_offset: 0.0
+    humidity_offset: 0.0
+    pressure_offset: 0.0
+    sea_level_pressure: 1013.25  # hPa at sea level
+    altitude_calculation: true
+
+# ESPHome Implementation
+esphome:
+  i2c:
+    sda: ${i2c_sda}
+    scl: ${i2c_scl}
+    frequency: 100kHz
+    
+  sensor:
+    - platform: bme280
+      address: ${i2c_address}
+      
+      temperature:
+        name: "${device_name} Temperature"
+        id: bme_temp
+        filters:
+          - offset: ${temp_offset}
+        on_value:
+          then:
+            - component.update: dew_point_sensor
+            
+      pressure:
+        name: "${device_name} Pressure"
+        id: bme_pressure
+        filters:
+          - offset: ${pressure_offset}
+        on_value:
+          then:
+            - component.update: altitude_sensor
+            
+      humidity:
+        name: "${device_name} Humidity"
+        id: bme_humidity
+        filters:
+          - offset: ${humidity_offset}
+        on_value:
+          then:
+            - component.update: dew_point_sensor
+            
+      update_interval: ${update_interval}s
+      
+    # Calculated sensors
+    - platform: template
+      name: "${device_name} Altitude"
+      id: altitude_sensor
+      unit_of_measurement: "m"
+      lambda: |-
+        const float sea_level = ${sea_level_pressure};
+        return ((sea_level / id(bme_pressure).state) - 1.0) * 44330.0;
+      update_interval: never
+      
+    - platform: template
+      name: "${device_name} Dew Point"
+      id: dew_point_sensor
+      unit_of_measurement: "°C"
+      lambda: |-
+        float t = id(bme_temp).state;
+        float h = id(bme_humidity).state;
+        float a = 17.27;
+        float b = 237.7;
+        float alpha = ((a * t) / (b + t)) + log(h/100.0);
+        return (b * alpha) / (a - alpha);
+      update_interval: never
+      
+    # Absolute humidity calculation
+    - platform: template
+      name: "${device_name} Absolute Humidity"
+      unit_of_measurement: "g/m³"
+      lambda: |-
+        float t = id(bme_temp).state;
+        float h = id(bme_humidity).state;
+        float abs_temp = t + 273.15;
+        return (6.112 * exp((17.67 * t) / (t + 243.5)) * h * 2.1674) / abs_temp;
+      update_interval: 60s
+      
+  # State publishing
+  interval:
+    - interval: ${update_interval}s
+      then:
+        - lambda: |-
+            // Publish comprehensive state
+            char payload[512];
+            sprintf(payload,
+              "{\"device_id\":\"${device_id}\","
+              "\"timestamp\":%lu,"
+              "\"data\":{"
+                "\"temperature\":%.2f,"
+                "\"humidity\":%.2f,"
+                "\"pressure\":%.2f,"
+                "\"altitude\":%.1f,"
+                "\"dew_point\":%.2f"
+              "},"
+              "\"comfort\":{"
+                "\"level\":\"%s\","
+                "\"description\":\"%s\""
+              "}}",
+              millis()/1000,
+              id(bme_temp).state,
+              id(bme_humidity).state,
+              id(bme_pressure).state,
+              id(altitude_sensor).state,
+              id(dew_point_sensor).state,
+              getComfortLevel(id(bme_temp).state, id(bme_humidity).state),
+              getComfortDescription(id(bme_temp).state, id(bme_humidity).state)
+            );
+            
+            id(nats_client).publish(
+              "home.devices.sensor.${device_id}.state",
+              payload
+            );
+
+# Arduino Implementation
+arduino:
+  required_libraries:
+    - Adafruit BME280 Library
+    - Adafruit Unified Sensor
+    
+  example_code: |
+    #include <Wire.h>
+    #include <Adafruit_BME280.h>
+    #include <NATSClient.h>
+    
+    #define BME280_ADDRESS 0x76
+    #define SEA_LEVEL_PRESSURE_HPA 1013.25
+    
+    Adafruit_BME280 bme;
+    NATSClient nats;
+    
+    const char* deviceId = "${device_id}";
+    unsigned long lastUpdate = 0;
+    const unsigned long updateInterval = ${update_interval} * 1000;
+    
+    // Calibration offsets
+    float tempOffset = ${temp_offset};
+    float humidityOffset = ${humidity_offset};
+    float pressureOffset = ${pressure_offset};
+    
+    void setup() {
+      Serial.begin(115200);
+      Wire.begin();
+      
+      if (!bme.begin(BME280_ADDRESS)) {
+        Serial.println("Could not find BME280 sensor!");
+        while (1) delay(10);
+      }
+      
+      // Configure sensor
+      bme.setSampling(
+        Adafruit_BME280::MODE_NORMAL,
+        Adafruit_BME280::SAMPLING_X2,  // Temperature
+        Adafruit_BME280::SAMPLING_X16, // Pressure
+        Adafruit_BME280::SAMPLING_X1,  // Humidity
+        Adafruit_BME280::FILTER_X16,
+        Adafruit_BME280::STANDBY_MS_0_5
+      );
+      
+      nats.connect("${nats_server}", ${nats_port});
+      announceDevice();
+    }
+    
+    void loop() {
+      nats.loop();
+      
+      if (millis() - lastUpdate > updateInterval) {
+        lastUpdate = millis();
+        readAndPublish();
+      }
+    }
+    
+    void readAndPublish() {
+      float temperature = bme.readTemperature() + tempOffset;
+      float humidity = bme.readHumidity() + humidityOffset;
+      float pressure = (bme.readPressure() / 100.0F) + pressureOffset;
+      float altitude = bme.readAltitude(SEA_LEVEL_PRESSURE_HPA);
+      float dewPoint = calculateDewPoint(temperature, humidity);
+      
+      // Determine comfort level
+      const char* comfort = getComfortLevel(temperature, humidity);
+      
+      // Create JSON payload
+      char payload[512];
+      sprintf(payload,
+        "{\"device_id\":\"%s\","
+        "\"timestamp\":%lu,"
+        "\"data\":{"
+          "\"temperature\":%.2f,"
+          "\"humidity\":%.2f,"
+          "\"pressure\":%.2f,"
+          "\"altitude\":%.1f,"
+          "\"dew_point\":%.2f"
+        "},"
+        "\"comfort\":\"%s\"}",
+        deviceId,
+        millis()/1000,
+        temperature, humidity, pressure, altitude, dewPoint,
+        comfort
+      );
+      
+      nats.publish("home.devices.sensor.${device_id}.state", payload);
+    }
+    
+    float calculateDewPoint(float temp, float humidity) {
+      float a = 17.27;
+      float b = 237.7;
+      float alpha = ((a * temp) / (b + temp)) + log(humidity/100.0);
+      return (b * alpha) / (a - alpha);
+    }
+    
+    const char* getComfortLevel(float temp, float humidity) {
+      if (temp < 18 || temp > 26) return "uncomfortable";
+      if (humidity < 30 || humidity > 60) return "uncomfortable";
+      if (temp >= 20 && temp <= 24 && humidity >= 40 && humidity <= 50) {
+        return "ideal";
+      }
+      return "comfortable";
+    }
+
+# Comfort level calculations
+comfort_levels:
+  ideal:
+    temperature: [20, 24]  # °C
+    humidity: [40, 50]     # %
+    description: "Perfect comfort conditions"
+    
+  comfortable:
+    temperature: [18, 26]
+    humidity: [30, 60]
+    description: "Generally comfortable"
+    
+  too_cold:
+    temperature: [0, 18]
+    description: "Temperature too low"
+    
+  too_hot:
+    temperature: [26, 40]
+    description: "Temperature too high"
+    
+  too_dry:
+    humidity: [0, 30]
+    description: "Air too dry"
+    
+  too_humid:
+    humidity: [60, 100]
+    description: "Air too humid"
+
+# Weather prediction based on pressure trends
+weather_prediction:
+  rising_rapidly:  # >2 hPa/3hr
+    prediction: "Improving weather"
+    
+  rising_slowly:   # 0.5-2 hPa/3hr
+    prediction: "Fair weather"
+    
+  steady:          # <0.5 hPa/3hr change
+    prediction: "No change"
+    
+  falling_slowly:  # -0.5 to -2 hPa/3hr
+    prediction: "Weather deteriorating"
+    
+  falling_rapidly: # <-2 hPa/3hr
+    prediction: "Storm approaching"
+
+# Home Assistant
+homeassistant:
+  sensor:
+    - name: "${device_name} Temperature"
+      state_topic: "home/devices/sensor/${device_id}/state"
+      value_template: "{{ value_json.data.temperature }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      
+    - name: "${device_name} Humidity"
+      state_topic: "home/devices/sensor/${device_id}/state"
+      value_template: "{{ value_json.data.humidity }}"
+      unit_of_measurement: "%"
+      device_class: humidity
+      
+    - name: "${device_name} Pressure"
+      state_topic: "home/devices/sensor/${device_id}/state"
+      value_template: "{{ value_json.data.pressure }}"
+      unit_of_measurement: "hPa"
+      device_class: pressure
+      
+    - name: "${device_name} Comfort"
+      state_topic: "home/devices/sensor/${device_id}/state"
+      value_template: "{{ value_json.comfort }}"
+      icon: "mdi:home-thermometer"
+
+# Wiring
+wiring:
+  i2c_connection:
+    vcc: "3.3V"
+    gnd: "GND"
+    sda: "GPIO21 (ESP32) / D2 (ESP8266) / A4 (Arduino)"
+    scl: "GPIO22 (ESP32) / D1 (ESP8266) / A5 (Arduino)"
+    
+  pull_up_resistors:
+    value: "4.7kΩ"
+    note: "Usually included on breakout boards"
+    
+# Calibration tips
+calibration:
+  temperature:
+    - "Compare with calibrated thermometer"
+    - "Allow 30 minutes to stabilize"
+    - "Keep away from heat sources"
+    
+  pressure:
+    - "Check local weather station"
+    - "Adjust for altitude"
+    - "Update sea level pressure regularly"
+    
+  humidity:
+    - "Use salt calibration method"
+    - "75% RH with saturated salt solution"
+
+# Notes
+notes:
+  - "BME280 is more accurate than DHT22"
+  - "Can measure pressure for weather monitoring"
+  - "I2C allows multiple sensors on same bus"
+  - "Consider BMP280 if humidity not needed"
+  - "Place in ventilated enclosure for accurate readings"

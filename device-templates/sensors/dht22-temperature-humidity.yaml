@@ -1,0 +1,171 @@
+# DHT22 Temperature & Humidity Sensor Template
+# Popular sensor for environmental monitoring
+
+device_info:
+  device_type: "sensor"
+  manufacturer: "Generic"
+  model: "DHT22"
+  
+capabilities:
+  sensors:
+    - temperature
+    - humidity
+  units:
+    temperature: "°C"
+    humidity: "%"
+  accuracy:
+    temperature: 0.5
+    humidity: 2.0
+  
+  configurable:
+    - update_interval
+    - temp_offset
+    - humidity_offset
+    - altitude  # For pressure compensation
+
+# Default configuration
+configuration:
+  defaults:
+    update_interval: 60        # Report every minute
+    temp_offset: 0.0          # Calibration offset
+    humidity_offset: 0.0      # Calibration offset
+    altitude: 0               # Altitude in meters
+
+# ESPHome Implementation
+esphome:
+  sensor:
+    - platform: dht
+      pin: GPIO4              # Typical data pin
+      model: DHT22
+      temperature:
+        name: "${device_name} Temperature"
+        id: temp_sensor
+        filters:
+          - offset: ${temp_offset}
+        on_value:
+          then:
+            - lambda: |-
+                // Publish to NATS
+                id(nats_client).publish(
+                  "home.devices.sensor.${device_id}.state",
+                  "{\"temperature\":" + str(x) + ",\"unit\":\"°C\"}"
+                );
+      humidity:
+        name: "${device_name} Humidity"
+        id: humidity_sensor
+        filters:
+          - offset: ${humidity_offset}
+        on_value:
+          then:
+            - lambda: |-
+                // Publish to NATS
+                id(nats_client).publish(
+                  "home.devices.sensor.${device_id}.state",
+                  "{\"humidity\":" + str(x) + ",\"unit\":\"%\"}"
+                );
+      update_interval: ${update_interval}s
+
+# Arduino Implementation
+arduino:
+  required_libraries:
+    - DHT sensor library
+    - Adafruit Unified Sensor
+  
+  example_code: |
+    #include <DHT.h>
+    #include <NATSClient.h>
+    
+    #define DHTPIN 4
+    #define DHTTYPE DHT22
+    
+    DHT dht(DHTPIN, DHTTYPE);
+    NATSClient nats;
+    
+    const char* deviceId = "${device_id}";
+    unsigned long lastUpdate = 0;
+    const unsigned long updateInterval = ${update_interval} * 1000;
+    
+    void setup() {
+      dht.begin();
+      nats.connect("${nats_server}", ${nats_port});
+      announceDevice();
+    }
+    
+    void loop() {
+      nats.loop();
+      
+      if (millis() - lastUpdate > updateInterval) {
+        lastUpdate = millis();
+        
+        float humidity = dht.readHumidity();
+        float temperature = dht.readTemperature();
+        
+        if (!isnan(humidity) && !isnan(temperature)) {
+          // Apply offsets
+          temperature += ${temp_offset};
+          humidity += ${humidity_offset};
+          
+          // Publish state
+          char payload[256];
+          sprintf(payload, 
+            "{\"device_id\":\"%s\",\"data\":{\"temperature\":%.1f,\"humidity\":%.1f}}", 
+            deviceId, temperature, humidity
+          );
+          
+          nats.publish("home.devices.sensor.${device_id}.state", payload);
+        }
+      }
+    }
+    
+    void announceDevice() {
+      const char* announcement = 
+        "{\"device_id\":\"${device_id}\","
+        "\"device_type\":\"sensor\","
+        "\"name\":\"${device_name}\","
+        "\"manufacturer\":\"Generic\","
+        "\"model\":\"DHT22\","
+        "\"capabilities\":{"
+          "\"sensors\":[\"temperature\",\"humidity\"],"
+          "\"units\":{\"temperature\":\"°C\",\"humidity\":\"%\"}"
+        "}}";
+      
+      nats.publish("home.discovery.announce", announcement);
+    }
+
+# Home Assistant Discovery
+homeassistant:
+  sensor:
+    - name: "${device_name} Temperature"
+      state_topic: "home/devices/sensor/${device_id}/state"
+      value_template: "{{ value_json.data.temperature }}"
+      unit_of_measurement: "°C"
+      device_class: temperature
+      
+    - name: "${device_name} Humidity"
+      state_topic: "home/devices/sensor/${device_id}/state"
+      value_template: "{{ value_json.data.humidity }}"
+      unit_of_measurement: "%"
+      device_class: humidity
+
+# Typical wiring
+wiring:
+  esp32:
+    vcc: "3.3V"
+    gnd: "GND"
+    data: "GPIO4"
+  esp8266:
+    vcc: "3.3V"
+    gnd: "GND"
+    data: "D2 (GPIO4)"
+  arduino:
+    vcc: "5V"
+    gnd: "GND"
+    data: "Digital Pin 4"
+    
+# Notes
+notes:
+  - "DHT22 requires 2-5 seconds between readings"
+  - "Use 10kΩ pull-up resistor on data line"
+  - "Operating voltage: 3.3-5.5V"
+  - "Temperature range: -40 to 80°C"
+  - "Humidity range: 0-100%"

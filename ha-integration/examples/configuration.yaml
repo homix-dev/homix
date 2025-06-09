@@ -1,0 +1,137 @@
+# Example Home Assistant configuration for NATS Bridge
+
+# Enable debug logging for troubleshooting
+logger:
+  default: info
+  logs:
+    custom_components.nats_bridge: debug
+    nats: debug
+
+# Example automations using NATS devices
+automation:
+  # Turn on lights when motion detected
+  - alias: "Motion Lights"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.nats_hallway_motion
+        to: "on"
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.nats_hallway_light
+      - delay:
+          minutes: 5
+      - service: switch.turn_off
+        target:
+          entity_id: switch.nats_hallway_light
+
+  # Climate control based on temperature
+  - alias: "Temperature Control"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.nats_living_room_temperature
+        above: 25
+    action:
+      - service: climate.set_temperature
+        target:
+          entity_id: climate.nats_ac_unit
+        data:
+          temperature: 22
+
+  # Alert on sensor readings
+  - alias: "Humidity Alert"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.nats_bathroom_humidity
+        above: 80
+        for:
+          minutes: 10
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "High Humidity"
+          message: "Bathroom humidity is {{ states('sensor.nats_bathroom_humidity') }}%"
+
+# Example scripts for NATS services
+script:
+  # Force sensor reading
+  refresh_all_sensors:
+    alias: "Refresh All Sensors"
+    sequence:
+      - service: nats_bridge.publish
+        data:
+          subject: "home.devices.sensor.*.command"
+          payload: '{"action": "read"}'
+
+  # Toggle all lights
+  toggle_all_lights:
+    alias: "Toggle All Lights"
+    sequence:
+      - service: nats_bridge.publish
+        data:
+          subject: "home.devices.switch.*.command"
+          payload: '{"action": "toggle"}'
+
+  # Request device status
+  check_device_status:
+    alias: "Check Device Status"
+    fields:
+      device_id:
+        description: "Device ID to check"
+        example: "switch-01"
+    sequence:
+      - service: nats_bridge.request
+        data:
+          subject: "home.devices.switch.{{ device_id }}.command"
+          payload: '{"action": "status"}'
+          timeout: 10
+
+# Dashboard card examples
+lovelace:
+  - title: NATS Devices
+    cards:
+      # Temperature sensors
+      - type: entities
+        title: Temperature Sensors
+        entities:
+          - entity: sensor.nats_living_room_temperature
+            name: Living Room
+          - entity: sensor.nats_bedroom_temperature
+            name: Bedroom
+          - entity: sensor.nats_outdoor_temperature
+            name: Outdoor
+
+      # Switch controls
+      - type: entities
+        title: Switches
+        entities:
+          - entity: switch.nats_living_room_light
+            name: Living Room Light
+          - entity: switch.nats_kitchen_light
+            name: Kitchen Light
+          - entity: switch.nats_porch_light
+            name: Porch Light
+
+      # Binary sensors
+      - type: glance
+        title: Security
+        entities:
+          - entity: binary_sensor.nats_front_door
+            name: Front Door
+          - entity: binary_sensor.nats_back_door
+            name: Back Door
+          - entity: binary_sensor.nats_garage_door
+            name: Garage
+
+      # Device health monitoring
+      - type: entities
+        title: Device Health
+        entities:
+          - type: attribute
+            entity: sensor.nats_living_room_temperature
+            attribute: rssi
+            name: Living Room RSSI
+          - type: attribute
+            entity: sensor.nats_living_room_temperature
+            attribute: uptime
+            name: Living Room Uptime

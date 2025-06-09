@@ -1,0 +1,152 @@
+version: '3'
+
+vars:
+  COMPONENT_NAME: nats_bridge
+  HA_CONFIG_DIR: ${HOME}/.homeassistant
+  CUSTOM_COMPONENTS_DIR: "{{.HA_CONFIG_DIR}}/custom_components"
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  validate:
+    desc: Validate the integration structure
+    cmds:
+      - echo "Validating Home Assistant integration..."
+      - test -f custom_components/{{.COMPONENT_NAME}}/manifest.json || (echo "Missing manifest.json" && exit 1)
+      - test -f custom_components/{{.COMPONENT_NAME}}/__init__.py || (echo "Missing __init__.py" && exit 1)
+      - test -f custom_components/{{.COMPONENT_NAME}}/config_flow.py || (echo "Missing config_flow.py" && exit 1)
+      - test -f custom_components/{{.COMPONENT_NAME}}/const.py || (echo "Missing const.py" && exit 1)
+      - echo "✓ Integration structure is valid"
+
+  install:
+    desc: Install integration to Home Assistant
+    deps: [validate]
+    cmds:
+      - |
+        if [ ! -d "{{.CUSTOM_COMPONENTS_DIR}}" ]; then
+          echo "Home Assistant custom components directory not found at {{.CUSTOM_COMPONENTS_DIR}}"
+          echo "Please set HA_CONFIG_DIR environment variable to your Home Assistant config directory"
+          exit 1
+        fi
+      - echo "Installing to {{.CUSTOM_COMPONENTS_DIR}}/{{.COMPONENT_NAME}}"
+      - rm -rf "{{.CUSTOM_COMPONENTS_DIR}}/{{.COMPONENT_NAME}}"
+      - cp -r custom_components/{{.COMPONENT_NAME}} "{{.CUSTOM_COMPONENTS_DIR}}/"
+      - echo "✓ Integration installed. Please restart Home Assistant."
+
+  uninstall:
+    desc: Uninstall integration from Home Assistant
+    cmds:
+      - |
+        if [ -d "{{.CUSTOM_COMPONENTS_DIR}}/{{.COMPONENT_NAME}}" ]; then
+          rm -rf "{{.CUSTOM_COMPONENTS_DIR}}/{{.COMPONENT_NAME}}"
+          echo "✓ Integration uninstalled. Please restart Home Assistant."
+        else
+          echo "Integration not found in {{.CUSTOM_COMPONENTS_DIR}}"
+        fi
+
+  dev-install:
+    desc: Install integration as symlink for development
+    deps: [validate]
+    cmds:
+      - |
+        if [ ! -d "{{.CUSTOM_COMPONENTS_DIR}}" ]; then
+          echo "Home Assistant custom components directory not found at {{.CUSTOM_COMPONENTS_DIR}}"
+          echo "Please set HA_CONFIG_DIR environment variable to your Home Assistant config directory"
+          exit 1
+        fi
+      - echo "Creating symlink in {{.CUSTOM_COMPONENTS_DIR}}/{{.COMPONENT_NAME}}"
+      - rm -rf "{{.CUSTOM_COMPONENTS_DIR}}/{{.COMPONENT_NAME}}"
+      - ln -s "$(pwd)/custom_components/{{.COMPONENT_NAME}}" "{{.CUSTOM_COMPONENTS_DIR}}/{{.COMPONENT_NAME}}"
+      - echo "✓ Development symlink created. Changes will be reflected immediately."
+
+  lint:
+    desc: Lint Python code
+    cmds:
+      - echo "Linting Python files..."
+      - |
+        if command -v ruff >/dev/null 2>&1; then
+          ruff check custom_components/{{.COMPONENT_NAME}}
+        elif command -v flake8 >/dev/null 2>&1; then
+          flake8 custom_components/{{.COMPONENT_NAME}}
+        elif command -v pylint >/dev/null 2>&1; then
+          pylint custom_components/{{.COMPONENT_NAME}}
+        else
+          echo "No Python linter found. Install ruff, flake8, or pylint."
+          exit 1
+        fi
+      - echo "✓ Linting complete"
+
+  format:
+    desc: Format Python code
+    cmds:
+      - echo "Formatting Python files..."
+      - |
+        if command -v black >/dev/null 2>&1; then
+          black custom_components/{{.COMPONENT_NAME}}
+        else
+          echo "Black not found. Install with: pip install black"
+          exit 1
+        fi
+      - echo "✓ Formatting complete"
+
+  test-device:
+    desc: Simulate a test device announcement
+    vars:
+      DEVICE_ID: '{{.DEVICE_ID | default "test-switch-01"}}'
+      DEVICE_TYPE: '{{.DEVICE_TYPE | default "switch"}}'
+    cmds:
+      - echo "Simulating device announcement for {{.DEVICE_ID}}..."
+      - |
+        nats pub home.discovery.announce '{
+          "device_id": "{{.DEVICE_ID}}",
+          "device_type": "{{.DEVICE_TYPE}}",
+          "name": "Test {{.DEVICE_TYPE | title}}",
+          "manufacturer": "Test",
+          "model": "Simulated",
+          "capabilities": {
+            "commands": ["on", "off", "toggle", "status"]
+          }
+        }'
+
+  test-state:
+    desc: Simulate device state update
+    vars:
+      DEVICE_ID: '{{.DEVICE_ID | default "test-switch-01"}}'
+      DEVICE_TYPE: '{{.DEVICE_TYPE | default "switch"}}'
+      STATE: '{{.STATE | default "on"}}'
+    cmds:
+      - echo "Publishing state update for {{.DEVICE_ID}}..."
+      - |
+        nats pub home.devices.{{.DEVICE_TYPE}}.{{.DEVICE_ID}}.state '{
+          "device_id": "{{.DEVICE_ID}}",
+          "state": "{{.STATE}}",
+          "timestamp": '$(date +%s)'
+        }'
+
+  monitor:
+    desc: Monitor NATS messages
+    cmds:
+      - echo "Monitoring NATS messages (Ctrl+C to stop)..."
+      - nats sub "home.>"
+
+  clean:
+    desc: Clean Python cache files
+    cmds:
+      - find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+      - find . -type f -name "*.pyc" -delete
+      - echo "✓ Cleaned Python cache files"
+
+  package:
+    desc: Create a package for distribution
+    deps: [validate]
+    vars:
+      VERSION:
+        sh: grep '"version"' custom_components/{{.COMPONENT_NAME}}/manifest.json | cut -d'"' -f4
+    cmds:
+      - echo "Creating package for version {{.VERSION}}..."
+      - rm -f {{.COMPONENT_NAME}}-{{.VERSION}}.zip
+      - cd custom_components && zip -r ../{{.COMPONENT_NAME}}-{{.VERSION}}.zip {{.COMPONENT_NAME}}
+      - echo "✓ Created {{.COMPONENT_NAME}}-{{.VERSION}}.zip"

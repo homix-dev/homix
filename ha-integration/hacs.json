@@ -1,0 +1,24 @@
+{
+  "name": "NATS Bridge",
+  "content_in_root": false,
+  "render_readme": true,
+  "homeassistant": "2024.1.0",
+  "domains": [
+    "binary_sensor",
+    "sensor",
+    "switch",
+    "light",
+    "climate",
+    "cover",
+    "fan",
+    "lock",
+    "number",
+    "select",
+    "button",
+    "text"
+  ],
+  "requirements": [
+    "nats-py==2.7.0",
+    "nkeys==0.1.0"
+  ]
+}

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Health Monitor - NATS Home Automation</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Device Health Monitor</h1>
+            <div class="system-status">
+                <span id="nats-status" class="status-indicator">
+                    <span class="dot"></span>
+                    NATS: <span class="status-text">Connecting...</span>
+                </span>
+                <span id="last-update" class="last-update">Last Update: Never</span>
+            </div>
+        </header>
+
+        <div class="summary-cards">
+            <div class="card">
+                <div class="card-header">Total Devices</div>
+                <div class="card-value" id="total-devices">0</div>
+            </div>
+            <div class="card">
+                <div class="card-header">Online</div>
+                <div class="card-value online" id="online-devices">0</div>
+            </div>
+            <div class="card">
+                <div class="card-header">Offline</div>
+                <div class="card-value offline" id="offline-devices">0</div>
+            </div>
+            <div class="card">
+                <div class="card-header">Battery Warnings</div>
+                <div class="card-value warning" id="battery-warnings">0</div>
+            </div>
+        </div>
+
+        <div class="filters">
+            <select id="type-filter">
+                <option value="">All Types</option>
+                <option value="sensor">Sensors</option>
+                <option value="binary_sensor">Binary Sensors</option>
+                <option value="switch">Switches</option>
+                <option value="light">Lights</option>
+                <option value="climate">Climate</option>
+                <option value="lock">Locks</option>
+            </select>
+            <select id="status-filter">
+                <option value="">All Status</option>
+                <option value="online">Online Only</option>
+                <option value="offline">Offline Only</option>
+                <option value="battery">Low Battery</option>
+                <option value="alerts">Has Alerts</option>
+            </select>
+            <input type="text" id="search-filter" placeholder="Search devices...">
+        </div>
+
+        <div class="devices-grid" id="devices-grid">
+            <!-- Device cards will be inserted here -->
+        </div>
+
+        <div class="charts-section">
+            <div class="chart-container">
+                <h3>Device Types Distribution</h3>
+                <canvas id="types-chart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>System Health</h3>
+                <canvas id="health-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Device Details Modal -->
+    <div id="device-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modal-device-name">Device Details</h2>
+            <div id="modal-device-content">
+                <!-- Device details will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

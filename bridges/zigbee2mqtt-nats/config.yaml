@@ -1,0 +1,18 @@
+# Zigbee2MQTT to NATS Bridge Configuration
+
+# MQTT Configuration (Zigbee2MQTT)
+mqtt:
+  broker: tcp://localhost:1883
+  client_id: zigbee2mqtt-nats-bridge
+  username: ""
+  password: ""
+  base_topic: zigbee2mqtt
+
+# NATS Configuration
+nats:
+  url: nats://localhost:4222
+  credentials: ""  # Path to NATS credentials file
+  base_subject: home.devices.zigbee
+
+# Logging
+debug: false

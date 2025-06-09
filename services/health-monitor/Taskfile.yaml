@@ -1,0 +1,140 @@
+version: '3'
+
+vars:
+  BINARY_NAME: health-monitor
+  BUILD_DIR: ./build
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the health monitor
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}} .
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}}"
+
+  run:
+    desc: Run the health monitor with default config
+    deps: [build]
+    cmds:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}} --config config.yaml"
+
+  dev:
+    desc: Run in development mode with live reload
+    deps: [build]
+    cmds:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}} --config config.yaml --debug"
+
+  install:
+    desc: Install the health monitor
+    deps: [build]
+    cmds:
+      - sudo cp {{.BUILD_DIR}}/{{.BINARY_NAME}} /usr/local/bin/
+      - sudo chmod +x /usr/local/bin/{{.BINARY_NAME}}
+      - sudo mkdir -p /etc/health-monitor
+      - sudo cp config.yaml /etc/health-monitor/config.yaml.example
+      - sudo cp -r static /etc/health-monitor/
+    preconditions:
+      - sh: test -f {{.BUILD_DIR}}/{{.BINARY_NAME}}
+        msg: "Binary not found. Run 'task build' first"
+
+  uninstall:
+    desc: Uninstall the health monitor
+    cmds:
+      - sudo rm -f /usr/local/bin/{{.BINARY_NAME}}
+      - sudo rm -rf /etc/health-monitor
+
+  systemd:install:
+    desc: Install systemd service
+    cmds:
+      - |
+        sudo tee /etc/systemd/system/health-monitor.service > /dev/null << EOF
+        [Unit]
+        Description=NATS Home Automation Health Monitor
+        After=network.target nats.service
+
+        [Service]
+        Type=simple
+        User=nats-ha
+        ExecStart=/usr/local/bin/{{.BINARY_NAME}} --config /etc/health-monitor/config.yaml
+        Restart=always
+        RestartSec=10
+        WorkingDirectory=/etc/health-monitor
+
+        [Install]
+        WantedBy=multi-user.target
+        EOF
+      - sudo systemctl daemon-reload
+      - sudo systemctl enable health-monitor
+
+  systemd:start:
+    desc: Start the systemd service
+    cmds:
+      - sudo systemctl start health-monitor
+
+  systemd:stop:
+    desc: Stop the systemd service
+    cmds:
+      - sudo systemctl stop health-monitor
+
+  systemd:status:
+    desc: Check systemd service status
+    cmds:
+      - sudo systemctl status health-monitor
+
+  systemd:logs:
+    desc: View systemd service logs
+    cmds:
+      - sudo journalctl -u health-monitor -f
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v ./...
+
+  test:coverage:
+    desc: Run tests with coverage
+    cmds:
+      - go test -v -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
+
+  lint:
+    desc: Run linter
+    cmds:
+      - golangci-lint run
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+      - rm -f coverage.out coverage.html
+
+  deps:
+    desc: Download dependencies
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  docker:build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t nats-ha/health-monitor:latest .
+
+  docker:run:
+    desc: Run in Docker
+    cmds:
+      - |
+        docker run -d \
+          --name health-monitor \
+          --network host \
+          -v $(pwd)/config.yaml:/config.yaml \
+          nats-ha/health-monitor:latest

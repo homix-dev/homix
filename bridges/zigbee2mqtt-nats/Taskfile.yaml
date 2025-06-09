@@ -1,0 +1,110 @@
+version: '3'
+
+vars:
+  BINARY_NAME: zigbee2mqtt-nats
+  BUILD_DIR: ./build
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the Zigbee2MQTT bridge
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}} .
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}}"
+
+  run:
+    desc: Run the bridge with default config
+    deps: [build]
+    cmds:
+      - "{{.BUILD_DIR}}/{{.BINARY_NAME}} --config config.yaml"
+
+  install:
+    desc: Install the bridge to /usr/local/bin
+    deps: [build]
+    cmds:
+      - sudo cp {{.BUILD_DIR}}/{{.BINARY_NAME}} /usr/local/bin/
+      - sudo chmod +x /usr/local/bin/{{.BINARY_NAME}}
+      - sudo mkdir -p /etc/zigbee2mqtt-nats
+      - sudo cp config.yaml /etc/zigbee2mqtt-nats/config.yaml.example
+    preconditions:
+      - sh: test -f {{.BUILD_DIR}}/{{.BINARY_NAME}}
+        msg: "Binary not found. Run 'task build' first"
+
+  uninstall:
+    desc: Uninstall the bridge
+    cmds:
+      - sudo rm -f /usr/local/bin/{{.BINARY_NAME}}
+      - sudo rm -rf /etc/zigbee2mqtt-nats
+
+  systemd:install:
+    desc: Install systemd service
+    cmds:
+      - |
+        sudo tee /etc/systemd/system/zigbee2mqtt-nats.service > /dev/null << EOF
+        [Unit]
+        Description=Zigbee2MQTT to NATS Bridge
+        After=network.target nats.service mosquitto.service
+
+        [Service]
+        Type=simple
+        User=zigbee2mqtt
+        ExecStart=/usr/local/bin/{{.BINARY_NAME}} --config /etc/zigbee2mqtt-nats/config.yaml
+        Restart=always
+        RestartSec=10
+
+        [Install]
+        WantedBy=multi-user.target
+        EOF
+      - sudo systemctl daemon-reload
+      - sudo systemctl enable zigbee2mqtt-nats
+
+  systemd:start:
+    desc: Start the systemd service
+    cmds:
+      - sudo systemctl start zigbee2mqtt-nats
+
+  systemd:stop:
+    desc: Stop the systemd service
+    cmds:
+      - sudo systemctl stop zigbee2mqtt-nats
+
+  systemd:status:
+    desc: Check systemd service status
+    cmds:
+      - sudo systemctl status zigbee2mqtt-nats
+
+  systemd:logs:
+    desc: View systemd service logs
+    cmds:
+      - sudo journalctl -u zigbee2mqtt-nats -f
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v ./...
+
+  lint:
+    desc: Run linter
+    cmds:
+      - golangci-lint run
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+
+  deps:
+    desc: Download dependencies
+    cmds:
+      - go mod download
+      - go mod tidy

@@ -2,22 +2,26 @@ version: '3'
 
 includes:
   discovery: ./discovery/Taskfile.yaml
+  health: ./health-monitor/Taskfile.yaml
 
 tasks:
   build:
     desc: Build all services
     cmds:
       - task: discovery:build
+      - task: health:build
 
   test:
     desc: Test all services
     cmds:
       - task: discovery:test
+      - task: health:test
 
   lint:
     desc: Lint all services
     cmds:
       - task: discovery:lint
+      - task: health:lint
 
   format:
     desc: Format all services
@@ -28,8 +32,10 @@ tasks:
     desc: Clean all services
     cmds:
       - task: discovery:clean
+      - task: health:clean
 
   install:
     desc: Install all services
     cmds:
       - task: discovery:install
+      - task: health:install

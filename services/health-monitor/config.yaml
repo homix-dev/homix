@@ -1,0 +1,19 @@
+# Health Monitor Configuration
+
+# NATS Configuration
+nats:
+  url: nats://localhost:4222
+  credentials: ""  # Path to NATS credentials file
+
+# HTTP Server Configuration
+http:
+  addr: :8080
+  static: ./static
+
+# Monitoring Configuration
+monitor:
+  device_timeout: 300s    # Device considered offline after 5 minutes
+  update_interval: 30s    # Dashboard update interval
+
+# Logging
+debug: false

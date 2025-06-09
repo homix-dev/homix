@@ -3,6 +3,9 @@ version: '3'
 vars:
   PYTHON_CMD: '{{default "python3" .PYTHON_CMD}}'
 
+includes:
+  zigbee: ./zigbee2mqtt-nats/Taskfile.yaml
+
 tasks:
   default:
     desc: List available bridge tasks
@@ -14,6 +17,11 @@ tasks:
     cmds:
       - '{{.PYTHON_CMD}} -m venv venv'
       - ./venv/bin/pip install -r requirements.txt
+
+  build:
+    desc: Build all bridges
+    cmds:
+      - task: zigbee:build
 
   mqtt-bridge:
     desc: Run MQTT to NATS bridge
@@ -34,12 +42,14 @@ tasks:
           echo "Warning: pytest not installed. Skipping Python tests."
           echo "To run tests, install pytest: pip install pytest"
         fi
+      - task: zigbee:test
 
   lint:
-    desc: Lint Python code
+    desc: Lint code
     cmds:
       - '{{.PYTHON_CMD}} -m pylint mqtt-nats-bridge/'
       - '{{.PYTHON_CMD}} -m black --check .'
+      - task: zigbee:lint
 
   format:
     desc: Format Python code
@@ -47,12 +57,13 @@ tasks:
       - '{{.PYTHON_CMD}} -m black .'
 
   clean:
-    desc: Clean Python artifacts
+    desc: Clean artifacts
     cmds:
       - find . -name "*.pyc" -delete
       - find . -name "__pycache__" -type d -exec rm -rf {} +
       - rm -rf .pytest_cache
       - rm -rf *.egg-info
+      - task: zigbee:clean
 
   docker-build:
     desc: Build bridge Docker images

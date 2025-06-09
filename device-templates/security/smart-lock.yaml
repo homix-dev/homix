@@ -1,0 +1,561 @@
+# Smart Lock Template
+# For electronic door lock control
+
+device_info:
+  device_type: "lock"
+  manufacturer: "Generic"
+  model: "Smart-Lock"
+  
+capabilities:
+  commands:
+    - "lock"
+    - "unlock"
+    - "status"
+    
+  features:
+    - keypad_entry
+    - fingerprint     # Optional
+    - rfid_cards      # Optional
+    - auto_lock
+    - tamper_detection
+    - battery_backup
+    
+  configurable:
+    - auto_lock_delay
+    - auto_lock_enabled
+    - failed_attempt_limit
+    - tamper_sensitivity
+
+# Default configuration
+configuration:
+  defaults:
+    auto_lock_delay: 30      # seconds
+    auto_lock_enabled: true
+    failed_attempt_limit: 5
+    tamper_sensitivity: "high"
+
+# ESPHome Implementation
+esphome:
+  # Lock mechanism (servo or motor)
+  servo:
+    - id: lock_servo
+      output: servo_output
+      auto_detach_time: 2s
+      transition_length: 1s
+      
+  output:
+    - platform: ledc
+      id: servo_output
+      pin: GPIO25
+      frequency: 50Hz
+
+  # Lock state
+  lock:
+    - platform: template
+      name: "${device_name}"
+      id: smart_lock
+      optimistic: false
+      assumed_state: false
+      
+      lambda: |-
+        return id(lock_position) == 1.0;
+        
+      lock_action:
+        - lambda: |-
+            // Move servo to locked position
+            id(lock_servo).write(1.0);
+            id(lock_position) = 1.0;
+            id(last_action_time) = millis();
+            id(last_action_by) = "command";
+            
+            // Log event
+            logAccess("locked", "command", "");
+            
+            // LED feedback
+            id(status_led).set_state(true);
+            id(status_led).set_brightness(1.0);
+            id(status_led).set_rgb(0, 1, 0);  // Green
+            
+      unlock_action:
+        - lambda: |-
+            // Move servo to unlocked position
+            id(lock_servo).write(0.0);
+            id(lock_position) = 0.0;
+            id(last_action_time) = millis();
+            id(last_action_by) = "command";
+            
+            // Log event
+            logAccess("unlocked", "command", "");
+            
+            // LED feedback
+            id(status_led).set_state(true);
+            id(status_led).set_brightness(1.0);
+            id(status_led).set_rgb(1, 0, 0);  // Red
+            
+            // Start auto-lock timer
+            if (${auto_lock_enabled}) {
+              id(auto_lock_script).execute();
+            }
+
+  # Keypad input
+  keypad:
+    id: keypad_input
+    rows:
+      - pin: GPIO32
+      - pin: GPIO33
+      - pin: GPIO34
+      - pin: GPIO35
+    columns:
+      - pin: GPIO19
+      - pin: GPIO21
+      - pin: GPIO22
+    keys: "123456789*0#"
+    has_diodes: false
+    on_key_pressed:
+      then:
+        - lambda: |-
+            // Handle keypad input
+            static std::string entered_code = "";
+            
+            if (x == '#') {
+              // Check code
+              if (checkCode(entered_code)) {
+                id(smart_lock).unlock();
+                logAccess("unlocked", "keypad", entered_code);
+              } else {
+                // Invalid code
+                id(failed_attempts) += 1;
+                logAccess("failed", "keypad", entered_code);
+                
+                if (id(failed_attempts) >= ${failed_attempt_limit}) {
+                  // Lockout
+                  sendAlert("keypad_lockout", id(failed_attempts));
+                }
+              }
+              entered_code = "";
+            } else if (x == '*') {
+              // Clear
+              entered_code = "";
+            } else {
+              // Add digit
+              entered_code += x;
+              
+              // Beep feedback
+              id(buzzer).turn_on();
+              delay(50);
+              id(buzzer).turn_off();
+            }
+
+  # RFID reader
+  rc522_spi:
+    cs_pin: GPIO5
+    on_tag:
+      then:
+        - lambda: |-
+            // Check RFID tag
+            std::string tag_id = format_hex_pretty(x);
+            
+            if (checkRFID(tag_id)) {
+              id(smart_lock).unlock();
+              logAccess("unlocked", "rfid", tag_id);
+            } else {
+              logAccess("failed", "rfid", tag_id);
+            }
+
+  # Fingerprint sensor (R503)
+  uart:
+    tx_pin: GPIO17
+    rx_pin: GPIO16
+    baud_rate: 57600
+    
+  fingerprint_grow:
+    on_finger_scan_matched:
+      then:
+        - lambda: |-
+            id(smart_lock).unlock();
+            logAccess("unlocked", "fingerprint", 
+              "id:" + to_string(finger_id));
+            
+    on_finger_scan_unmatched:
+      then:
+        - lambda: |-
+            logAccess("failed", "fingerprint", "unknown");
+
+  # Door sensor
+  binary_sensor:
+    - platform: gpio
+      pin:
+        number: GPIO26
+        mode: INPUT_PULLUP
+      name: "${device_name} Door"
+      id: door_sensor
+      device_class: door
+      on_state:
+        then:
+          - lambda: |-
+              if (!x && ${auto_lock_enabled}) {
+                // Door closed, start auto-lock timer
+                id(auto_lock_script).execute();
+              }
+              
+    # Inside handle sensor
+    - platform: gpio
+      pin:
+        number: GPIO27
+        mode: INPUT_PULLUP
+      name: "${device_name} Inside Handle"
+      on_press:
+        then:
+          - lambda: |-
+              // Always allow unlock from inside
+              if (id(lock_position) == 1.0) {
+                id(smart_lock).unlock();
+                logAccess("unlocked", "inside_handle", "");
+              }
+              
+    # Tamper detection
+    - platform: gpio
+      pin:
+        number: GPIO14
+        mode: INPUT_PULLUP
+        inverted: true
+      name: "${device_name} Tamper"
+      device_class: tamper
+      on_press:
+        then:
+          - lambda: |-
+              sendAlert("tamper_detected", 0);
+              logAccess("tamper", "sensor", "");
+
+  # Battery voltage
+  sensor:
+    - platform: adc
+      pin: GPIO36
+      name: "${device_name} Battery"
+      id: battery_voltage
+      attenuation: 11db
+      filters:
+        - multiply: 2.0  # Voltage divider
+      on_value_range:
+        - below: 3.2
+          then:
+            - lambda: |-
+                sendAlert("low_battery", x);
+
+  # Status LED
+  light:
+    - platform: rgb
+      name: "${device_name} Status LED"
+      id: status_led
+      red: led_r
+      green: led_g
+      blue: led_b
+      
+  output:
+    - platform: ledc
+      id: led_r
+      pin: GPIO2
+    - platform: ledc
+      id: led_g
+      pin: GPIO4
+    - platform: ledc
+      id: led_b
+      pin: GPIO15
+      
+  # Buzzer
+  output:
+    - platform: gpio
+      pin: GPIO23
+      id: buzzer_output
+      
+  switch:
+    - platform: output
+      id: buzzer
+      output: buzzer_output
+
+  # Scripts
+  script:
+    - id: auto_lock_script
+      mode: restart
+      then:
+        - delay: ${auto_lock_delay}s
+        - lambda: |-
+            if (!id(door_sensor).state) {  // Door is closed
+              id(smart_lock).lock();
+              logAccess("locked", "auto", "");
+            }
+
+  # Global variables
+  globals:
+    - id: lock_position
+      type: float
+      initial_value: '1.0'  # Start locked
+    - id: failed_attempts
+      type: int
+      initial_value: '0'
+    - id: last_action_time
+      type: unsigned long
+      initial_value: '0'
+    - id: last_action_by
+      type: std::string
+      initial_value: '""'
+
+  # Access control functions
+  custom_component:
+    lambda: |-
+      // Valid codes storage (in production, use encrypted storage)
+      std::vector<std::string> valid_codes = {
+        "1234",  // Master code
+        "5678",  // User code
+      };
+      
+      std::vector<std::string> valid_rfids = {
+        "AB:CD:EF:01",
+        "12:34:56:78",
+      };
+      
+      auto checkCode = [&](const std::string& code) {
+        return std::find(valid_codes.begin(), 
+                        valid_codes.end(), 
+                        code) != valid_codes.end();
+      };
+      
+      auto checkRFID = [&](const std::string& rfid) {
+        return std::find(valid_rfids.begin(), 
+                        valid_rfids.end(), 
+                        rfid) != valid_rfids.end();
+      };
+      
+      auto logAccess = [](const char* action, 
+                          const char* method, 
+                          const std::string& credential) {
+        char log[512];
+        sprintf(log,
+          "{\"device_id\":\"${device_id}\","
+          "\"event\":\"access_log\","
+          "\"action\":\"%s\","
+          "\"method\":\"%s\","
+          "\"credential\":\"%s\","
+          "\"timestamp\":%lu}",
+          action, method, credential.c_str(), millis()/1000
+        );
+        
+        nats.publish("home.security.access_log", log);
+      };
+      
+      auto sendAlert = [](const char* alert_type, float value) {
+        char alert[256];
+        sprintf(alert,
+          "{\"device_id\":\"${device_id}\","
+          "\"alert\":\"%s\","
+          "\"value\":%.1f,"
+          "\"severity\":\"high\","
+          "\"timestamp\":%lu}",
+          alert_type, value, millis()/1000
+        );
+        
+        nats.publish("home.security.alerts", alert);
+      };
+      
+      // Subscribe to commands
+      nats.subscribe("home.devices.lock.${device_id}.command",
+        [](const char* data) {
+          auto cmd = parseJson(data);
+          
+          if (cmd["action"] == "lock") {
+            id(smart_lock).lock();
+          } else if (cmd["action"] == "unlock") {
+            // Verify authorization
+            if (cmd.containsKey("code")) {
+              if (checkCode(cmd["code"])) {
+                id(smart_lock).unlock();
+              } else {
+                logAccess("failed", "remote", cmd["code"]);
+              }
+            }
+          } else if (cmd["action"] == "add_code") {
+            // Add new code
+            valid_codes.push_back(cmd["code"]);
+          } else if (cmd["action"] == "remove_code") {
+            // Remove code
+            auto it = std::find(valid_codes.begin(), 
+                               valid_codes.end(), 
+                               cmd["code"].as<std::string>());
+            if (it != valid_codes.end()) {
+              valid_codes.erase(it);
+            }
+          }
+        }
+      );
+
+# Arduino Implementation (simplified)
+arduino:
+  required_libraries:
+    - Servo
+    - Keypad
+    - MFRC522
+    
+  example_code: |
+    #include <Servo.h>
+    #include <Keypad.h>
+    #include <NATSClient.h>
+    
+    Servo lockServo;
+    const int SERVO_PIN = 9;
+    const int LOCKED_POS = 0;
+    const int UNLOCKED_POS = 90;
+    
+    // Keypad setup
+    const byte ROWS = 4;
+    const byte COLS = 3;
+    char keys[ROWS][COLS] = {
+      {'1','2','3'},
+      {'4','5','6'},
+      {'7','8','9'},
+      {'*','0','#'}
+    };
+    byte rowPins[ROWS] = {8, 7, 6, 5};
+    byte colPins[COLS] = {4, 3, 2};
+    Keypad keypad = Keypad(makeKeymap(keys), 
+                          rowPins, colPins, 
+                          ROWS, COLS);
+    
+    NATSClient nats;
+    const char* deviceId = "${device_id}";
+    
+    bool isLocked = true;
+    String enteredCode = "";
+    const String MASTER_CODE = "1234";
+    
+    void setup() {
+      lockServo.attach(SERVO_PIN);
+      lockServo.write(LOCKED_POS);
+      
+      nats.connect("${nats_server}", ${nats_port});
+      nats.subscribe("home.devices.lock.${device_id}.command", handleCommand);
+      
+      announceDevice();
+    }
+    
+    void loop() {
+      nats.loop();
+      
+      char key = keypad.getKey();
+      if (key) {
+        handleKeypress(key);
+      }
+    }
+    
+    void handleKeypress(char key) {
+      if (key == '#') {
+        // Check code
+        if (enteredCode == MASTER_CODE) {
+          toggleLock();
+          logAccess("toggled", "keypad", "valid");
+        } else {
+          logAccess("failed", "keypad", enteredCode);
+        }
+        enteredCode = "";
+      } else if (key == '*') {
+        // Clear
+        enteredCode = "";
+      } else {
+        // Add digit
+        enteredCode += key;
+      }
+    }
+    
+    void toggleLock() {
+      if (isLocked) {
+        unlock();
+      } else {
+        lock();
+      }
+    }
+    
+    void lock() {
+      lockServo.write(LOCKED_POS);
+      isLocked = true;
+      publishState();
+    }
+    
+    void unlock() {
+      lockServo.write(UNLOCKED_POS);
+      isLocked = false;
+      publishState();
+      
+      // Auto-lock after delay
+      delay(30000);
+      lock();
+    }
+
+# Lock mechanisms
+mechanisms:
+  servo:
+    pros: "Simple, quiet"
+    cons: "Limited torque"
+    
+  motor:
+    pros: "High torque, secure"
+    cons: "Requires feedback"
+    
+  solenoid:
+    pros: "Fast, simple"
+    cons: "Power hungry, noisy"
+    
+  commercial:
+    pros: "Reliable, certified"
+    cons: "More expensive"
+
+# Security considerations
+security:
+  - "Encrypt access codes"
+  - "Use secure communication"
+  - "Implement rate limiting"
+  - "Log all access attempts"
+  - "Backup mechanical key"
+  - "Fail-secure design"
+
+# Automation examples
+automation_examples:
+  # Auto-lock when leaving
+  auto_lock_away:
+    trigger: "presence.state = away"
+    action: "lock.lock()"
+    
+  # Unlock when arriving
+  auto_unlock_arrive:
+    trigger: "presence.state = home AND location.approaching"
+    action: "lock.unlock()"
+    
+  # Guest access
+  temporary_code:
+    trigger: "calendar.event = 'cleaner'"
+    action: 
+      - "lock.add_code('9999')"
+      - "delay(4h)"
+      - "lock.remove_code('9999')"
+      
+  # Security integration
+  alarm_integration:
+    trigger: "alarm.state = armed"
+    action: "lock.ensure_locked()"
+
+# Power backup
+power_backup:
+  battery:
+    - "4x AA batteries typical"
+    - "9V backup common"
+    - "Low battery alerts"
+    
+  capacitor:
+    - "Super capacitor for servo movement"
+    - "Maintains lock state"
+
+# Notes
+notes:
+  - "Always have mechanical backup"
+  - "Test auto-lock thoroughly"
+  - "Consider fire safety codes"
+  - "Professional installation recommended"
+  - "Regular security updates needed"

@@ -1,0 +1,581 @@
+# RGB LED Controller Template
+# For controlling RGB LED strips and bulbs
+
+device_info:
+  device_type: "light"
+  manufacturer: "Generic"
+  model: "ESP-RGB-Controller"
+  
+capabilities:
+  commands:
+    - "on"
+    - "off"
+    - "toggle"
+    - "set_brightness"
+    - "set_color"
+    - "set_effect"
+    - "set_white"
+    
+  features:
+    - rgb_color
+    - brightness
+    - color_temperature
+    - effects
+    - transitions
+    - presets
+    - music_sync      # Optional
+    
+  configurable:
+    - default_brightness
+    - transition_time
+    - power_on_state
+    - effects_speed
+    - color_correction
+
+# Default configuration
+configuration:
+  defaults:
+    default_brightness: 100    # 0-255
+    transition_time: 1000      # milliseconds
+    power_on_state: "last"     # off, on, last
+    effects_speed: 50          # 0-100
+    color_correction:
+      red: 1.0
+      green: 0.9               # Adjust for LED characteristics
+      blue: 0.8
+
+# ESPHome Implementation
+esphome:
+  # RGB PWM outputs
+  output:
+    - platform: ledc
+      pin: GPIO5
+      id: red_channel
+      frequency: 5000Hz
+      
+    - platform: ledc
+      pin: GPIO18
+      id: green_channel
+      frequency: 5000Hz
+      
+    - platform: ledc
+      pin: GPIO19
+      id: blue_channel
+      frequency: 5000Hz
+      
+    # Optional white channel
+    - platform: ledc
+      pin: GPIO21
+      id: white_channel
+      frequency: 5000Hz
+
+  # Main light entity
+  light:
+    - platform: rgbw
+      name: "${device_name}"
+      id: rgb_light
+      red: red_channel
+      green: green_channel
+      blue: blue_channel
+      white: white_channel
+      restore_mode: ${power_on_state}
+      
+      # Color correction
+      gamma_correct: 2.8
+      default_transition_length: ${transition_time}ms
+      
+      # Effects
+      effects:
+        - random:
+            name: "Random Colors"
+            transition_length: 5s
+            update_interval: 5s
+            
+        - strobe:
+            name: "Strobe"
+            colors:
+              - state: true
+                duration: 500ms
+              - state: false
+                duration: 500ms
+                
+        - flicker:
+            name: "Flicker"
+            alpha: 95%
+            intensity: 1.5%
+            
+        - lambda:
+            name: "Rainbow"
+            update_interval: 16ms
+            lambda: |-
+              static int state = 0;
+              auto call = id(rgb_light).turn_on();
+              int red, green, blue;
+              
+              // HSV to RGB with S=1, V=1
+              int h = state % 360;
+              int hi = (h / 60) % 6;
+              int f = (h % 60) * 255 / 60;
+              int q = 255 - f;
+              
+              switch(hi) {
+                case 0: red = 255; green = f; blue = 0; break;
+                case 1: red = q; green = 255; blue = 0; break;
+                case 2: red = 0; green = 255; blue = f; break;
+                case 3: red = 0; green = q; blue = 255; break;
+                case 4: red = f; green = 0; blue = 255; break;
+                case 5: red = 255; green = 0; blue = q; break;
+              }
+              
+              call.set_rgb(red/255.0, green/255.0, blue/255.0);
+              call.perform();
+              
+              state += 2;  // Speed
+              
+        - lambda:
+            name: "Fire"
+            update_interval: 100ms
+            lambda: |-
+              int r = 255;
+              int g = random(50, 255);
+              int b = random(0, 50);
+              auto call = id(rgb_light).turn_on();
+              call.set_rgb(r/255.0, g/255.0, b/255.0);
+              call.set_transition_length(100);
+              call.perform();
+              
+        - lambda:
+            name: "Ocean"
+            update_interval: 3s
+            lambda: |-
+              auto call = id(rgb_light).turn_on();
+              int r = random(0, 50);
+              int g = random(50, 150);
+              int b = random(150, 255);
+              call.set_rgb(r/255.0, g/255.0, b/255.0);
+              call.set_transition_length(3000);
+              call.perform();
+
+      on_turn_on:
+        - lambda: |-
+            // Publish state
+            publishLightState();
+            
+      on_turn_off:
+        - lambda: |-
+            // Publish state
+            publishLightState();
+            
+      on_state:
+        - lambda: |-
+            // Publish state on any change
+            publishLightState();
+
+  # Color presets
+  script:
+    - id: preset_warm_white
+      then:
+        - light.turn_on:
+            id: rgb_light
+            red: 100%
+            green: 75%
+            blue: 40%
+            brightness: 80%
+            
+    - id: preset_cool_white
+      then:
+        - light.turn_on:
+            id: rgb_light
+            red: 80%
+            green: 90%
+            blue: 100%
+            brightness: 80%
+            
+    - id: preset_night_light
+      then:
+        - light.turn_on:
+            id: rgb_light
+            red: 50%
+            green: 20%
+            blue: 0%
+            brightness: 10%
+
+  # NATS command handling
+  custom_component:
+    lambda: |-
+      // Subscribe to commands
+      nats.subscribe("home.devices.light.${device_id}.command", 
+        [](const char* data) {
+          auto cmd = parseJson(data);
+          auto call = id(rgb_light).make_call();
+          
+          if (cmd["action"] == "on") {
+            call.set_state(true);
+            
+            // Set color if provided
+            if (cmd.containsKey("color")) {
+              int r = cmd["color"]["r"];
+              int g = cmd["color"]["g"];
+              int b = cmd["color"]["b"];
+              call.set_rgb(r/255.0, g/255.0, b/255.0);
+            }
+            
+            // Set brightness if provided
+            if (cmd.containsKey("brightness")) {
+              int brightness = cmd["brightness"];
+              call.set_brightness(brightness/255.0);
+            }
+            
+            // Set transition
+            if (cmd.containsKey("transition")) {
+              int transition = cmd["transition"];
+              call.set_transition_length(transition);
+            }
+            
+          } else if (cmd["action"] == "off") {
+            call.set_state(false);
+            
+          } else if (cmd["action"] == "toggle") {
+            call.set_state(!id(rgb_light).current_values.is_on());
+            
+          } else if (cmd["action"] == "set_color") {
+            call.set_state(true);
+            
+            if (cmd.containsKey("rgb")) {
+              int r = cmd["rgb"]["r"];
+              int g = cmd["rgb"]["g"];
+              int b = cmd["rgb"]["b"];
+              call.set_rgb(r/255.0, g/255.0, b/255.0);
+            } else if (cmd.containsKey("hsv")) {
+              float h = cmd["hsv"]["h"];
+              float s = cmd["hsv"]["s"];
+              float v = cmd["hsv"]["v"];
+              call.set_hsv(h, s, v);
+            }
+            
+          } else if (cmd["action"] == "set_effect") {
+            call.set_state(true);
+            const char* effect = cmd["effect"];
+            call.set_effect(effect);
+            
+          } else if (cmd["action"] == "preset") {
+            const char* preset = cmd["preset"];
+            if (strcmp(preset, "warm_white") == 0) {
+              id(preset_warm_white).execute();
+            } else if (strcmp(preset, "cool_white") == 0) {
+              id(preset_cool_white).execute();
+            } else if (strcmp(preset, "night_light") == 0) {
+              id(preset_night_light).execute();
+            }
+          }
+          
+          call.perform();
+        }
+      );
+      
+      // Publish state function
+      auto publishLightState = []() {
+        auto values = id(rgb_light).current_values;
+        
+        char payload[512];
+        sprintf(payload,
+          "{\"device_id\":\"${device_id}\","
+          "\"state\":\"%s\","
+          "\"brightness\":%d,"
+          "\"color\":{"
+            "\"r\":%d,"
+            "\"g\":%d,"
+            "\"b\":%d"
+          "},"
+          "\"white\":%d,"
+          "\"effect\":\"%s\"}",
+          values.is_on() ? "on" : "off",
+          (int)(values.get_brightness() * 255),
+          (int)(values.get_red() * 255),
+          (int)(values.get_green() * 255),
+          (int)(values.get_blue() * 255),
+          (int)(values.get_white() * 255),
+          values.get_effect().c_str()
+        );
+        
+        nats.publish("home.devices.light.${device_id}.state", payload);
+      };
+
+# Arduino Implementation with FastLED
+arduino:
+  required_libraries:
+    - FastLED
+    - ArduinoJson
+    
+  example_code: |
+    #include <FastLED.h>
+    #include <NATSClient.h>
+    #include <ArduinoJson.h>
+    
+    // LED configuration
+    #define LED_PIN     5
+    #define NUM_LEDS    60
+    #define LED_TYPE    WS2812B
+    #define COLOR_ORDER GRB
+    
+    CRGB leds[NUM_LEDS];
+    
+    // Device state
+    bool lightOn = false;
+    uint8_t brightness = 255;
+    CRGB currentColor = CRGB::White;
+    String currentEffect = "none";
+    
+    NATSClient nats;
+    const char* deviceId = "${device_id}";
+    
+    void setup() {
+      // Initialize LEDs
+      FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+      FastLED.setBrightness(brightness);
+      
+      // Connect to NATS
+      nats.connect("${nats_server}", ${nats_port});
+      nats.subscribe("home.devices.light.${device_id}.command", handleCommand);
+      
+      announceDevice();
+    }
+    
+    void loop() {
+      nats.loop();
+      
+      // Run current effect
+      if (lightOn && currentEffect != "none") {
+        runEffect();
+      }
+      
+      FastLED.show();
+      
+      // Publish state periodically
+      static unsigned long lastPublish = 0;
+      if (millis() - lastPublish > 30000) {
+        lastPublish = millis();
+        publishState();
+      }
+    }
+    
+    void handleCommand(const char* subject, const char* data, const char* reply) {
+      StaticJsonDocument<512> cmd;
+      deserializeJson(cmd, data);
+      
+      const char* action = cmd["action"];
+      
+      if (strcmp(action, "on") == 0) {
+        lightOn = true;
+        currentEffect = "none";
+        
+        if (cmd.containsKey("color")) {
+          currentColor = CRGB(cmd["color"]["r"], cmd["color"]["g"], cmd["color"]["b"]);
+        }
+        
+        if (cmd.containsKey("brightness")) {
+          brightness = cmd["brightness"];
+          FastLED.setBrightness(brightness);
+        }
+        
+        fill_solid(leds, NUM_LEDS, currentColor);
+        
+      } else if (strcmp(action, "off") == 0) {
+        lightOn = false;
+        fill_solid(leds, NUM_LEDS, CRGB::Black);
+        
+      } else if (strcmp(action, "toggle") == 0) {
+        lightOn = !lightOn;
+        fill_solid(leds, NUM_LEDS, lightOn ? currentColor : CRGB::Black);
+        
+      } else if (strcmp(action, "set_effect") == 0) {
+        lightOn = true;
+        currentEffect = cmd["effect"].as<String>();
+        
+      } else if (strcmp(action, "preset") == 0) {
+        lightOn = true;
+        currentEffect = "none";
+        applyPreset(cmd["preset"]);
+      }
+      
+      publishState();
+      
+      // Send response
+      if (reply) {
+        nats.publish(reply, "{\"status\":\"ok\"}");
+      }
+    }
+    
+    void runEffect() {
+      if (currentEffect == "rainbow") {
+        rainbowEffect();
+      } else if (currentEffect == "fire") {
+        fireEffect();
+      } else if (currentEffect == "ocean") {
+        oceanEffect();
+      } else if (currentEffect == "twinkle") {
+        twinkleEffect();
+      }
+    }
+    
+    void rainbowEffect() {
+      static uint8_t hue = 0;
+      fill_rainbow(leds, NUM_LEDS, hue, 7);
+      hue++;
+      delay(20);
+    }
+    
+    void fireEffect() {
+      // Heat array
+      static byte heat[NUM_LEDS];
+      
+      // Cool down cells
+      for(int i = 0; i < NUM_LEDS; i++) {
+        heat[i] = qsub8(heat[i], random8(0, ((55 * 10) / NUM_LEDS) + 2));
+      }
+      
+      // Drift heat up
+      for(int k = NUM_LEDS - 1; k >= 2; k--) {
+        heat[k] = (heat[k - 1] + heat[k - 2] + heat[k - 2]) / 3;
+      }
+      
+      // Ignite new sparks
+      if(random8() < 120) {
+        int y = random8(7);
+        heat[y] = qadd8(heat[y], random8(160, 255));
+      }
+      
+      // Map heat to LED colors
+      for(int j = 0; j < NUM_LEDS; j++) {
+        CRGB color = HeatColor(heat[j]);
+        leds[j] = color;
+      }
+      
+      delay(30);
+    }
+    
+    void applyPreset(const char* preset) {
+      if (strcmp(preset, "warm_white") == 0) {
+        currentColor = CRGB(255, 190, 100);
+      } else if (strcmp(preset, "cool_white") == 0) {
+        currentColor = CRGB(200, 230, 255);
+      } else if (strcmp(preset, "night_light") == 0) {
+        currentColor = CRGB(128, 50, 0);
+        brightness = 25;
+        FastLED.setBrightness(brightness);
+      }
+      
+      fill_solid(leds, NUM_LEDS, currentColor);
+    }
+
+# Music sync addon
+music_sync:
+  sensor:
+    - platform: adc
+      pin: GPIO36
+      name: "Audio Level"
+      id: audio_level
+      update_interval: 20ms
+      filters:
+        - sliding_window_moving_average:
+            window_size: 5
+            send_every: 1
+      on_value:
+        then:
+          - lambda: |-
+              if (id(music_mode_enabled)) {
+                // Map audio level to brightness
+                float level = x / 3.3 * 255;
+                auto call = id(rgb_light).turn_on();
+                call.set_brightness(level / 255.0);
+                call.set_transition_length(0);
+                call.perform();
+              }
+
+# Preset scenes
+presets:
+  relax:
+    color: {r: 255, g: 147, b: 41}    # Warm orange
+    brightness: 50
+    
+  reading:
+    color: {r: 255, g: 200, b: 150}   # Warm white
+    brightness: 70
+    
+  movie:
+    color: {r: 100, g: 50, b: 150}    # Dim purple
+    brightness: 20
+    
+  party:
+    effect: "rainbow"
+    brightness: 100
+    
+  romantic:
+    color: {r: 255, g: 20, b: 50}     # Pink/red
+    brightness: 30
+    effect: "pulse"
+
+# Integration examples
+integrations:
+  # Sync with TV
+  tv_sync:
+    trigger: "tv.state = on"
+    action: "light.preset('movie')"
+    
+  # Sunrise simulation
+  sunrise:
+    trigger: "time = 06:30"
+    sequence:
+      - "light.on({r:50,g:0,b:0}, brightness:1)"
+      - "delay(60s)"
+      - "light.transition({r:255,g:100,b:0}, brightness:50, duration:600s)"
+      
+  # Music reactive
+  music_mode:
+    trigger: "media_player.playing AND scene = party"
+    action: "light.music_sync(true)"
+
+# Wiring diagrams
+wiring:
+  # For LED strips
+  led_strip:
+    power:
+      positive: "12V/24V PSU positive"
+      negative: "PSU negative (common with ESP)"
+    data:
+      signal: "GPIO pin via 470Ω resistor"
+      
+  # For individual LEDs
+  ws2812b:
+    vcc: "5V (separate power for many LEDs)"
+    gnd: "Common ground"
+    din: "GPIO pin"
+    
+  # Level shifting (3.3V to 5V)
+  level_shifter:
+    recommendation: "Use 74HCT125 or similar"
+    alternative: "Often works without for short runs"
+
+# Power considerations
+power:
+  calculation:
+    ws2812b: "60mA per LED at full white"
+    typical: "20mA average per LED"
+    
+  power_supply:
+    30_leds: "5V 2A minimum"
+    60_leds: "5V 4A minimum"
+    300_leds: "5V 20A (inject power every 50 LEDs)"
+    
+  power_injection:
+    why: "Voltage drop causes color shift"
+    where: "Every 50-100 LEDs"
+    how: "Connect power at multiple points"
+
+# Notes
+notes:
+  - "Use a capacitor (1000µF) across power supply"
+  - "Add 470Ω resistor on data line"
+  - "Keep data wire short or use level shifter"
+  - "Common ground between ESP and LED PSU"
+  - "Calculate power requirements carefully"

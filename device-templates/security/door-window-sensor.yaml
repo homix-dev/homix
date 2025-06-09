@@ -1,0 +1,420 @@
+# Door/Window Magnetic Contact Sensor Template
+# Reed switch based security sensor
+
+device_info:
+  device_type: "binary_sensor"
+  manufacturer: "Generic"
+  model: "Reed Switch"
+  
+capabilities:
+  binary_sensors:
+    - door        # or window
+    - tamper      # Optional tamper detection
+    
+  features:
+    - battery_powered
+    - low_power_mode
+    - tamper_detection
+    - open_duration_tracking
+    
+  configurable:
+    - sensor_type      # door/window/gate/garage
+    - invert_state    # NO vs NC
+    - debounce_time
+    - alert_timeout
+
+# Default configuration  
+configuration:
+  defaults:
+    sensor_type: "door"
+    invert_state: false    # false = closed when connected
+    debounce_time: 100     # milliseconds
+    alert_timeout: 300     # seconds before alert
+
+# ESPHome Implementation (ESP32 with deep sleep)
+esphome:
+  # Main sensor
+  binary_sensor:
+    - platform: gpio
+      pin:
+        number: GPIO25
+        mode: INPUT_PULLUP
+        inverted: ${invert_state}
+      name: "${device_name}"
+      id: door_sensor
+      device_class: ${sensor_type}
+      
+      filters:
+        - delayed_on: ${debounce_time}ms
+        - delayed_off: ${debounce_time}ms
+        
+      on_state:
+        then:
+          - lambda: |-
+              // Track state change time
+              static unsigned long last_open_time = 0;
+              static unsigned long total_open_duration = 0;
+              
+              if (x) {  // Door opened
+                last_open_time = millis();
+                
+                // Publish event
+                char event[256];
+                sprintf(event,
+                  "{\"device_id\":\"${device_id}\","
+                  "\"event\":\"${sensor_type}_opened\","
+                  "\"timestamp\":%lu}",
+                  millis()/1000
+                );
+                id(nats_client).publish(
+                  "home.devices.binary_sensor.${device_id}.event",
+                  event
+                );
+                
+                // Start alert timer
+                id(alert_timer).execute();
+                
+              } else {  // Door closed
+                if (last_open_time > 0) {
+                  total_open_duration += millis() - last_open_time;
+                }
+                
+                // Cancel alert
+                id(alert_timer).stop();
+                
+                // Publish event with duration
+                char event[256];
+                sprintf(event,
+                  "{\"device_id\":\"${device_id}\","
+                  "\"event\":\"${sensor_type}_closed\","
+                  "\"duration\":%lu,"
+                  "\"timestamp\":%lu}",
+                  (millis() - last_open_time) / 1000,
+                  millis()/1000
+                );
+                id(nats_client).publish(
+                  "home.devices.binary_sensor.${device_id}.event",
+                  event
+                );
+              }
+              
+              // Publish state
+              publishState(x, last_open_time, total_open_duration);
+              
+    # Tamper detection (optional)
+    - platform: gpio
+      pin:
+        number: GPIO26
+        mode: INPUT_PULLUP
+        inverted: true
+      name: "${device_name} Tamper"
+      id: tamper_sensor
+      device_class: tamper
+      
+      on_press:
+        then:
+          - lambda: |-
+              // Send tamper alert
+              char alert[256];
+              sprintf(alert,
+                "{\"device_id\":\"${device_id}\","
+                "\"alert\":\"tamper_detected\","
+                "\"severity\":\"high\","
+                "\"timestamp\":%lu}",
+                millis()/1000
+              );
+              id(nats_client).publish(
+                "home.security.alerts",
+                alert
+              );
+
+  # Battery monitoring (for battery powered devices)
+  sensor:
+    - platform: adc
+      pin: GPIO34
+      name: "${device_name} Battery"
+      id: battery_voltage
+      attenuation: 11db
+      filters:
+        - multiply: 2.0  # Voltage divider
+        - sliding_window_moving_average:
+            window_size: 10
+            send_every: 10
+      on_value:
+        then:
+          - lambda: |-
+              // Calculate battery percentage (3.0V = 0%, 4.2V = 100%)
+              float percentage = (x - 3.0) / 1.2 * 100.0;
+              if (percentage < 0) percentage = 0;
+              if (percentage > 100) percentage = 100;
+              id(battery_level) = percentage;
+              
+              // Low battery alert
+              if (percentage < 20 && !id(low_battery_sent)) {
+                id(low_battery_sent) = true;
+                char alert[256];
+                sprintf(alert,
+                  "{\"device_id\":\"${device_id}\","
+                  "\"alert\":\"low_battery\","
+                  "\"battery_level\":%.1f,"
+                  "\"severity\":\"medium\"}",
+                  percentage
+                );
+                id(nats_client).publish("home.security.alerts", alert);
+              }
+
+  # Alert timer script
+  script:
+    - id: alert_timer
+      mode: restart
+      then:
+        - delay: ${alert_timeout}s
+        - lambda: |-
+            // Send alert for door left open
+            char alert[256];
+            sprintf(alert,
+              "{\"device_id\":\"${device_id}\","
+              "\"alert\":\"${sensor_type}_left_open\","
+              "\"duration\":%d,"
+              "\"severity\":\"medium\"}",
+              ${alert_timeout}
+            );
+            id(nats_client).publish("home.security.alerts", alert);
+
+  # Deep sleep for battery saving
+  deep_sleep:
+    id: deep_sleep_control
+    sleep_duration: 10min  # Wake every 10 minutes to report
+    wakeup_pin: GPIO25     # Wake on door state change
+    wakeup_pin_mode: INVERT_WAKEUP
+
+  # Global variables
+  globals:
+    - id: battery_level
+      type: float
+      initial_value: '100.0'
+    - id: low_battery_sent
+      type: bool
+      initial_value: 'false'
+
+# Arduino Implementation (with interrupt)
+arduino:
+  example_code: |
+    #include <NATSClient.h>
+    #include <avr/sleep.h>
+    #include <avr/power.h>
+    
+    const int DOOR_PIN = 2;      // Interrupt capable pin
+    const int TAMPER_PIN = 3;    // Interrupt capable pin
+    const int BATTERY_PIN = A0;  // Analog pin for battery
+    
+    const char* deviceId = "${device_id}";
+    const char* sensorType = "${sensor_type}";
+    
+    volatile bool doorStateChanged = false;
+    volatile bool tamperDetected = false;
+    bool doorState = false;
+    unsigned long doorOpenTime = 0;
+    unsigned long totalOpenDuration = 0;
+    
+    NATSClient nats;
+    
+    void setup() {
+      pinMode(DOOR_PIN, INPUT_PULLUP);
+      pinMode(TAMPER_PIN, INPUT_PULLUP);
+      
+      // Attach interrupts
+      attachInterrupt(digitalPinToInterrupt(DOOR_PIN), doorISR, CHANGE);
+      attachInterrupt(digitalPinToInterrupt(TAMPER_PIN), tamperISR, FALLING);
+      
+      // Initial state
+      doorState = digitalRead(DOOR_PIN) == HIGH;
+      
+      nats.connect("${nats_server}", ${nats_port});
+      announceDevice();
+      
+      // Enable sleep mode
+      set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+      sleep_enable();
+    }
+    
+    void loop() {
+      nats.loop();
+      
+      // Check for state changes
+      if (doorStateChanged) {
+        doorStateChanged = false;
+        handleDoorChange();
+      }
+      
+      if (tamperDetected) {
+        tamperDetected = false;
+        handleTamper();
+      }
+      
+      // Check battery every hour
+      static unsigned long lastBatteryCheck = 0;
+      if (millis() - lastBatteryCheck > 3600000) {
+        lastBatteryCheck = millis();
+        checkBattery();
+      }
+      
+      // Report health periodically
+      static unsigned long lastHealth = 0;
+      if (millis() - lastHealth > 300000) {  // 5 minutes
+        lastHealth = millis();
+        publishHealth();
+      }
+      
+      // Enter sleep mode if nothing to do
+      if (!doorStateChanged && !tamperDetected) {
+        enterSleep();
+      }
+    }
+    
+    void doorISR() {
+      doorStateChanged = true;
+    }
+    
+    void tamperISR() {
+      tamperDetected = true;
+    }
+    
+    void handleDoorChange() {
+      bool newState = digitalRead(DOOR_PIN) == HIGH;
+      
+      if (newState != doorState) {
+        doorState = newState;
+        
+        if (doorState) {  // Door opened
+          doorOpenTime = millis();
+          publishEvent("opened");
+        } else {  // Door closed
+          if (doorOpenTime > 0) {
+            unsigned long duration = millis() - doorOpenTime;
+            totalOpenDuration += duration;
+            publishEvent("closed", duration / 1000);
+          }
+        }
+        
+        publishState();
+      }
+    }
+    
+    void handleTamper() {
+      // Send tamper alert
+      char payload[256];
+      sprintf(payload,
+        "{\"device_id\":\"%s\","
+        "\"alert\":\"tamper_detected\","
+        "\"severity\":\"high\","
+        "\"timestamp\":%lu}",
+        deviceId, millis()/1000
+      );
+      
+      nats.publish("home.security.alerts", payload);
+    }
+    
+    void checkBattery() {
+      int rawValue = analogRead(BATTERY_PIN);
+      float voltage = rawValue * (5.0 / 1023.0) * 2.0;  // Voltage divider
+      float percentage = (voltage - 3.0) / 1.2 * 100.0;
+      
+      if (percentage < 20) {
+        // Low battery alert
+        char payload[256];
+        sprintf(payload,
+          "{\"device_id\":\"%s\","
+          "\"alert\":\"low_battery\","
+          "\"battery_level\":%.1f}",
+          deviceId, percentage
+        );
+        
+        nats.publish("home.security.alerts", payload);
+      }
+    }
+    
+    void enterSleep() {
+      // Flush any pending data
+      nats.loop();
+      delay(100);
+      
+      // Enter power down mode
+      sleep_mode();
+      
+      // CPU will wake here after interrupt
+      sleep_disable();
+    }
+
+# Security automation examples
+automation_examples:
+  # Alert when door left open
+  door_left_open:
+    trigger: "door.open.duration > 300"
+    action: 
+      - "notify.send('Door left open for 5 minutes')"
+      - "tts.speak('Please close the door')"
+      
+  # Auto-lock when closed
+  auto_lock:
+    trigger: "door.state changed to closed"
+    condition: "lock.state = unlocked"
+    action: "lock.lock()"
+    
+  # Security mode activation
+  arm_security:
+    trigger: "time = 23:00 OR presence = away"
+    condition: "all_doors.state = closed"
+    action: "alarm.arm_away()"
+    
+  # Intrusion detection
+  intrusion_alert:
+    trigger: "door.state = open AND alarm.state = armed"
+    action:
+      - "siren.on()"
+      - "notify.critical('INTRUSION DETECTED!')"
+      - "camera.record()"
+
+# Installation tips
+installation:
+  placement:
+    door:
+      sensor: "On door frame (fixed part)"
+      magnet: "On door (moving part)"
+      gap: "Less than 20mm when closed"
+      
+    window:
+      sensor: "On window frame"
+      magnet: "On window sash"
+      position: "Top corner recommended"
+      
+  wiring:
+    battery_powered:
+      - "Use low quiescent current regulator"
+      - "Consider CR123A or 18650 battery"
+      - "Add capacitor for WiFi current spikes"
+      
+    powered:
+      - "Use existing alarm system wiring"
+      - "12V/24V systems common"
+      - "Add voltage regulator for ESP"
+
+# Integration with alarm systems
+alarm_integration:
+  wired_zones:
+    - "Connect in series for NC zones"
+    - "Connect in parallel for NO zones"
+    - "Use EOL resistors if required"
+    
+  wireless:
+    - "Can coexist with existing sensors"
+    - "Provides additional smart features"
+    - "Backup for traditional systems"
+
+# Notes
+notes:
+  - "Use interrupt pins for wake-on-change"
+  - "Consider LoRa for long range battery operation"
+  - "Debouncing prevents false triggers"
+  - "Log open/close patterns for security analysis"
+  - "Can trigger cameras on door open events"

@@ -1,0 +1,264 @@
+# PIR Motion Sensor Template
+# Passive Infrared motion detection
+
+device_info:
+  device_type: "binary_sensor"
+  manufacturer: "Generic"
+  model: "HC-SR501"
+  
+capabilities:
+  binary_sensors:
+    - motion
+  
+  features:
+    - adjustable_sensitivity
+    - adjustable_delay
+    - occupancy_tracking
+    
+  configurable:
+    - motion_timeout
+    - sensitivity
+    - led_indicator
+    - occupancy_timeout
+
+# Default configuration
+configuration:
+  defaults:
+    motion_timeout: 30        # Seconds to stay on after motion
+    sensitivity: "medium"     # low, medium, high
+    led_indicator: true       # Visual feedback
+    occupancy_timeout: 300    # 5 minutes for occupancy
+
+# ESPHome Implementation
+esphome:
+  binary_sensor:
+    - platform: gpio
+      pin: 
+        number: GPIO5
+        mode: INPUT_PULLDOWN
+      name: "${device_name} Motion"
+      id: motion_sensor
+      device_class: motion
+      
+      # Filters for debouncing
+      filters:
+        - delayed_on: 10ms
+        - delayed_off: !lambda 'return id(motion_timeout) * 1000;'
+      
+      on_press:
+        then:
+          - lambda: |-
+              // Motion detected
+              auto now = millis();
+              id(last_motion_time) = now;
+              id(occupancy) = true;
+              
+              // Publish motion event
+              id(nats_client).publish(
+                "home.devices.binary_sensor.${device_id}.event",
+                "{\"event\":\"motion_detected\",\"timestamp\":" + str(now/1000) + "}"
+              );
+              
+              // Update state
+              id(nats_client).publish(
+                "home.devices.binary_sensor.${device_id}.state",
+                "{\"motion\":true,\"occupancy\":true}"
+              );
+              
+      on_release:
+        then:
+          - lambda: |-
+              // Motion ended
+              id(nats_client).publish(
+                "home.devices.binary_sensor.${device_id}.state",
+                "{\"motion\":false,\"occupancy\":" + str(id(occupancy)) + "}"
+              );
+              
+  # Configuration number inputs
+  number:
+    - platform: template
+      name: "${device_name} Motion Timeout"
+      id: motion_timeout
+      min_value: 5
+      max_value: 300
+      step: 5
+      initial_value: 30
+      optimistic: true
+      unit_of_measurement: "s"
+      
+  # Occupancy tracking
+  interval:
+    - interval: 10s
+      then:
+        - lambda: |-
+            if (id(occupancy) && (millis() - id(last_motion_time)) > (id(occupancy_timeout) * 1000)) {
+              id(occupancy) = false;
+              id(nats_client).publish(
+                "home.devices.binary_sensor.${device_id}.state",
+                "{\"motion\":false,\"occupancy\":false}"
+              );
+            }
+
+  globals:
+    - id: last_motion_time
+      type: unsigned long
+      initial_value: '0'
+    - id: occupancy
+      type: bool
+      initial_value: 'false'
+    - id: occupancy_timeout
+      type: int
+      initial_value: '300'
+
+# Arduino Implementation
+arduino:
+  example_code: |
+    #include <NATSClient.h>
+    
+    const int PIR_PIN = 5;
+    const char* deviceId = "${device_id}";
+    
+    NATSClient nats;
+    
+    bool motionState = false;
+    bool occupancy = false;
+    unsigned long lastMotionTime = 0;
+    unsigned long motionTimeout = 30000;      // 30 seconds
+    unsigned long occupancyTimeout = 300000;  // 5 minutes
+    
+    void setup() {
+      pinMode(PIR_PIN, INPUT);
+      
+      nats.connect("${nats_server}", ${nats_port});
+      announceDevice();
+      
+      // Allow PIR to stabilize
+      delay(60000); // 1 minute warmup
+    }
+    
+    void loop() {
+      nats.loop();
+      
+      bool currentMotion = digitalRead(PIR_PIN) == HIGH;
+      
+      // Motion state changed
+      if (currentMotion != motionState) {
+        motionState = currentMotion;
+        
+        if (motionState) {
+          // Motion detected
+          lastMotionTime = millis();
+          occupancy = true;
+          
+          publishEvent("motion_detected");
+          publishState(true, true);
+        } else {
+          // Motion ended
+          publishState(false, occupancy);
+        }
+      }
+      
+      // Check occupancy timeout
+      if (occupancy && (millis() - lastMotionTime > occupancyTimeout)) {
+        occupancy = false;
+        publishState(false, false);
+      }
+    }
+    
+    void publishState(bool motion, bool occupied) {
+      char payload[128];
+      sprintf(payload, 
+        "{\"device_id\":\"%s\",\"motion\":%s,\"occupancy\":%s}", 
+        deviceId,
+        motion ? "true" : "false",
+        occupied ? "true" : "false"
+      );
+      
+      nats.publish("home.devices.binary_sensor.${device_id}.state", payload);
+    }
+    
+    void publishEvent(const char* event) {
+      char payload[128];
+      sprintf(payload, 
+        "{\"device_id\":\"%s\",\"event\":\"%s\",\"timestamp\":%lu}", 
+        deviceId, event, millis()/1000
+      );
+      
+      nats.publish("home.devices.binary_sensor.${device_id}.event", payload);
+    }
+    
+    void announceDevice() {
+      const char* announcement = 
+        "{\"device_id\":\"${device_id}\","
+        "\"device_type\":\"binary_sensor\","
+        "\"name\":\"${device_name}\","
+        "\"manufacturer\":\"Generic\","
+        "\"model\":\"HC-SR501\","
+        "\"capabilities\":{"
+          "\"binary_sensors\":[\"motion\"],"
+          "\"features\":[\"occupancy_tracking\"]"
+        "}}";
+      
+      nats.publish("home.discovery.announce", announcement);
+    }
+
+# Automation examples
+automation_examples:
+  # Turn on lights with motion
+  motion_light:
+    trigger: "motion = true"
+    action: "turn_on_lights"
+    
+  # Security alert
+  security_alert:
+    trigger: "motion = true AND time.between('22:00', '06:00')"
+    action: "send_alert"
+    
+  # Occupancy-based climate
+  climate_control:
+    trigger: "occupancy changed"
+    condition: "occupancy = true"
+    action: "set_climate_comfort_mode"
+
+# Home Assistant
+homeassistant:
+  binary_sensor:
+    - name: "${device_name} Motion"
+      state_topic: "home/devices/binary_sensor/${device_id}/state"
+      value_template: "{{ value_json.motion }}"
+      device_class: motion
+      
+    - name: "${device_name} Occupancy"
+      state_topic: "home/devices/binary_sensor/${device_id}/state"
+      value_template: "{{ value_json.occupancy }}"
+      device_class: occupancy
+
+# Wiring
+wiring:
+  all_boards:
+    vcc: "5V (3.3V also works)"
+    gnd: "GND"
+    out: "Digital Input Pin"
+    
+  adjustments:
+    sensitivity: "Potentiometer 1 (clockwise = more sensitive)"
+    time_delay: "Potentiometer 2 (clockwise = longer delay)"
+    trigger_mode: "Jumper (H = repeat trigger, L = single trigger)"
+
+# Installation tips
+installation:
+  mounting:
+    height: "2-3 meters"
+    angle: "Pointing slightly downward"
+    avoid: "Direct sunlight, heat sources, air vents"
+    
+  coverage:
+    range: "5-7 meters"
+    angle: "120 degrees"
+    
+# Notes
+notes:
+  - "PIR sensors need 30-60 seconds to stabilize after power on"
+  - "False triggers can be caused by: pets, hot air, sudden temperature changes"
+  - "Use multiple sensors for better coverage and accuracy"
+  - "Consider microwave sensors for glass doors/windows"

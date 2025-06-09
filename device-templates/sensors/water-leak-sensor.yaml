@@ -1,0 +1,483 @@
+# Water Leak Detection Sensor Template
+# For detecting water leaks and flooding
+
+device_info:
+  device_type: "binary_sensor"
+  manufacturer: "Generic"
+  model: "Water-Leak-Detector"
+  
+capabilities:
+  binary_sensors:
+    - water_leak
+    - probe_1      # Multiple probe support
+    - probe_2
+    
+  features:
+    - multi_probe_support
+    - cable_sensor_compatible
+    - buzzer_alert
+    - battery_powered
+    
+  configurable:
+    - sensitivity
+    - alert_delay
+    - buzzer_enabled
+    - probe_resistance
+
+# Default configuration
+configuration:
+  defaults:
+    sensitivity: "high"      # high, medium, low
+    alert_delay: 0          # seconds
+    buzzer_enabled: true
+    probe_resistance: 10000  # ohms threshold
+
+# ESPHome Implementation
+esphome:
+  # Main water sensor using resistance measurement
+  sensor:
+    - platform: resistance
+      sensor: water_resistance_sensor
+      configuration: DOWNSTREAM
+      resistor: 10kOhm
+      name: "${device_name} Water Resistance"
+      id: water_resistance
+      internal: true
+      filters:
+        - median:
+            window_size: 5
+            send_every: 1
+            
+  # ADC sensor for probe
+  - platform: adc
+    pin: GPIO34
+    name: "${device_name} Probe Voltage"
+    id: probe_voltage
+    attenuation: 11db
+    internal: true
+    update_interval: 1s
+    
+  binary_sensor:
+    # Main water detection
+    - platform: template
+      name: "${device_name}"
+      id: water_leak_sensor
+      device_class: moisture
+      lambda: |-
+        // Water detected when resistance drops below threshold
+        return id(water_resistance).state < ${probe_resistance};
+      on_press:
+        then:
+          - lambda: |-
+              // Record leak start time
+              id(leak_start_time) = millis();
+              
+              // Sound buzzer if enabled
+              if (${buzzer_enabled}) {
+                id(buzzer).turn_on();
+              }
+              
+              // Send immediate alert
+              char alert[256];
+              sprintf(alert,
+                "{\"device_id\":\"${device_id}\","
+                "\"alert\":\"water_leak_detected\","
+                "\"severity\":\"critical\","
+                "\"location\":\"${location}\","
+                "\"timestamp\":%lu}",
+                millis()/1000
+              );
+              nats.publish("home.security.alerts", alert);
+              
+      on_release:
+        then:
+          - lambda: |-
+              // Calculate leak duration
+              unsigned long duration = (millis() - id(leak_start_time)) / 1000;
+              
+              // Stop buzzer
+              id(buzzer).turn_off();
+              
+              // Send clear alert
+              char alert[256];
+              sprintf(alert,
+                "{\"device_id\":\"${device_id}\","
+                "\"alert\":\"water_leak_cleared\","
+                "\"duration\":%lu,"
+                "\"timestamp\":%lu}",
+                duration,
+                millis()/1000
+              );
+              nats.publish("home.security.alerts", alert);
+              
+    # Multiple probe support
+    - platform: gpio
+      pin:
+        number: GPIO25
+        mode: INPUT_PULLUP
+      name: "${device_name} Probe 1"
+      id: probe_1
+      device_class: moisture
+      filters:
+        - delayed_on: ${alert_delay}s
+        
+    - platform: gpio  
+      pin:
+        number: GPIO26
+        mode: INPUT_PULLUP
+      name: "${device_name} Probe 2"
+      id: probe_2
+      device_class: moisture
+      filters:
+        - delayed_on: ${alert_delay}s
+        
+    # Cable sensor (for long detection strips)
+    - platform: gpio
+      pin:
+        number: GPIO27
+        mode: INPUT_PULLUP
+      name: "${device_name} Cable Sensor"
+      id: cable_sensor
+      device_class: moisture
+      
+    # Tamper detection
+    - platform: gpio
+      pin:
+        number: GPIO32
+        mode: INPUT_PULLUP
+        inverted: true
+      name: "${device_name} Tamper"
+      device_class: tamper
+
+  # Buzzer output
+  output:
+    - platform: gpio
+      pin: GPIO33
+      id: buzzer_output
+      
+  # Buzzer control
+  switch:
+    - platform: output
+      name: "${device_name} Buzzer"
+      output: buzzer_output
+      id: buzzer
+      internal: true
+      
+  # Buzzer pattern script
+  script:
+    - id: buzzer_pattern
+      mode: restart
+      then:
+        - while:
+            condition:
+              binary_sensor.is_on: water_leak_sensor
+            then:
+              - output.turn_on: buzzer_output
+              - delay: 200ms
+              - output.turn_off: buzzer_output
+              - delay: 200ms
+              - output.turn_on: buzzer_output
+              - delay: 200ms
+              - output.turn_off: buzzer_output
+              - delay: 600ms
+
+  # Battery monitoring
+  sensor:
+    - platform: adc
+      pin: GPIO35
+      name: "${device_name} Battery"
+      id: battery_voltage
+      attenuation: 11db
+      filters:
+        - multiply: 2.0  # Voltage divider
+        - sliding_window_moving_average:
+            window_size: 10
+            send_every: 10
+      on_value:
+        then:
+          - lambda: |-
+              float percentage = (x - 3.0) / 1.2 * 100.0;
+              if (percentage < 20) {
+                // Low battery alert
+                char alert[256];
+                sprintf(alert,
+                  "{\"device_id\":\"${device_id}\","
+                  "\"alert\":\"low_battery\","
+                  "\"battery_level\":%.1f}",
+                  percentage
+                );
+                nats.publish("home.maintenance.alerts", alert);
+              }
+
+  # Test mode
+  button:
+    - platform: template
+      name: "${device_name} Test"
+      on_press:
+        - lambda: |-
+            // Simulate water detection for 5 seconds
+            id(test_mode) = true;
+            id(buzzer_pattern).execute();
+            
+        - delay: 5s
+        - lambda: |-
+            id(test_mode) = false;
+            id(buzzer).turn_off();
+
+  # Global variables
+  globals:
+    - id: leak_start_time
+      type: unsigned long
+      initial_value: '0'
+    - id: test_mode
+      type: bool
+      initial_value: 'false'
+
+  # State publishing
+  interval:
+    - interval: 60s
+      then:
+        - lambda: |-
+            char payload[512];
+            sprintf(payload,
+              "{\"device_id\":\"${device_id}\","
+              "\"timestamp\":%lu,"
+              "\"sensors\":{"
+                "\"water_detected\":%s,"
+                "\"probe_1\":%s,"
+                "\"probe_2\":%s,"
+                "\"cable_sensor\":%s,"
+                "\"resistance\":%.0f"
+              "},"
+              "\"battery_voltage\":%.2f,"
+              "\"test_mode\":%s}",
+              millis()/1000,
+              id(water_leak_sensor).state ? "true" : "false",
+              id(probe_1).state ? "true" : "false", 
+              id(probe_2).state ? "true" : "false",
+              id(cable_sensor).state ? "true" : "false",
+              id(water_resistance).state,
+              id(battery_voltage).state,
+              id(test_mode) ? "true" : "false"
+            );
+            
+            nats.publish("home.devices.binary_sensor.${device_id}.state", payload);
+
+# Arduino Implementation  
+arduino:
+  example_code: |
+    #include <NATSClient.h>
+    
+    // Pin definitions
+    const int PROBE_PIN = A0;
+    const int PROBE_POWER = 7;   // Power probe only when reading
+    const int BUZZER_PIN = 8;
+    const int LED_PIN = 13;
+    
+    // Configuration
+    const int WATER_THRESHOLD = 300;  // ADC threshold
+    const int READ_INTERVAL = 1000;   // ms
+    
+    NATSClient nats;
+    const char* deviceId = "${device_id}";
+    
+    bool waterDetected = false;
+    bool lastWaterState = false;
+    unsigned long leakStartTime = 0;
+    
+    void setup() {
+      pinMode(PROBE_POWER, OUTPUT);
+      pinMode(BUZZER_PIN, OUTPUT);
+      pinMode(LED_PIN, OUTPUT);
+      
+      digitalWrite(PROBE_POWER, LOW);
+      
+      nats.connect("${nats_server}", ${nats_port});
+      announceDevice();
+    }
+    
+    void loop() {
+      nats.loop();
+      
+      static unsigned long lastRead = 0;
+      if (millis() - lastRead > READ_INTERVAL) {
+        lastRead = millis();
+        checkWaterLevel();
+      }
+      
+      // Update buzzer
+      if (waterDetected) {
+        updateBuzzer();
+      }
+    }
+    
+    void checkWaterLevel() {
+      // Power on probe
+      digitalWrite(PROBE_POWER, HIGH);
+      delay(10);  // Stabilize
+      
+      // Read sensor
+      int reading = analogRead(PROBE_PIN);
+      
+      // Power off probe (prevents corrosion)
+      digitalWrite(PROBE_POWER, LOW);
+      
+      // Determine water presence
+      waterDetected = (reading < WATER_THRESHOLD);
+      
+      // Check for state change
+      if (waterDetected != lastWaterState) {
+        lastWaterState = waterDetected;
+        
+        if (waterDetected) {
+          // Water detected
+          leakStartTime = millis();
+          digitalWrite(LED_PIN, HIGH);
+          sendAlert("water_leak_detected", "critical");
+          
+        } else {
+          // Water cleared
+          unsigned long duration = (millis() - leakStartTime) / 1000;
+          digitalWrite(LED_PIN, LOW);
+          digitalWrite(BUZZER_PIN, LOW);
+          
+          char msg[256];
+          sprintf(msg,
+            "{\"alert\":\"water_leak_cleared\","
+            "\"duration\":%lu}",
+            duration
+          );
+          nats.publish("home.security.alerts", msg);
+        }
+        
+        publishState();
+      }
+    }
+    
+    void updateBuzzer() {
+      static unsigned long lastBeep = 0;
+      static int beepState = 0;
+      
+      unsigned long now = millis();
+      
+      switch(beepState) {
+        case 0:  // First beep
+          if (now - lastBeep > 1000) {
+            digitalWrite(BUZZER_PIN, HIGH);
+            lastBeep = now;
+            beepState = 1;
+          }
+          break;
+          
+        case 1:  // First pause
+          if (now - lastBeep > 200) {
+            digitalWrite(BUZZER_PIN, LOW);
+            lastBeep = now;
+            beepState = 2;
+          }
+          break;
+          
+        case 2:  // Second beep
+          if (now - lastBeep > 200) {
+            digitalWrite(BUZZER_PIN, HIGH);
+            lastBeep = now;
+            beepState = 3;
+          }
+          break;
+          
+        case 3:  // Long pause
+          if (now - lastBeep > 200) {
+            digitalWrite(BUZZER_PIN, LOW);
+            lastBeep = now;
+            beepState = 0;
+          }
+          break;
+      }
+    }
+
+# Probe types and installation
+probe_types:
+  spot_probe:
+    description: "Two metal contacts for spot detection"
+    placement: "On floor near water sources"
+    
+  cable_sensor:
+    description: "Water sensing cable for large areas"
+    placement: "Along walls, under appliances"
+    length: "1-15 meters typical"
+    
+  float_switch:
+    description: "Mechanical float for tank/sump monitoring"
+    placement: "In sumps, tanks, drains"
+
+# Installation locations
+installation:
+  kitchen:
+    - "Under sink"
+    - "Behind dishwasher"
+    - "Near refrigerator water line"
+    
+  bathroom:
+    - "Behind toilet"
+    - "Under sink"
+    - "Near bathtub/shower"
+    
+  laundry:
+    - "Behind washing machine"
+    - "Near water heater"
+    - "Floor drain area"
+    
+  basement:
+    - "Near sump pump"
+    - "Low points"
+    - "Near water main"
+    
+  mechanical:
+    - "Under HVAC unit"
+    - "Near water softener"
+    - "Boiler/furnace drain"
+
+# Automation examples
+automation_examples:
+  # Shut off water valve
+  water_shutoff:
+    trigger: "water_leak.detected"
+    action: 
+      - "water_valve.close()"
+      - "notify.critical('Water leak detected! Main valve closed')"
+      
+  # Multi-sensor confirmation
+  confirmed_leak:
+    trigger: "water_leak.probe_1 AND water_leak.probe_2"
+    action: "alarm.trigger('flooding')"
+    
+  # Sump pump monitoring
+  sump_high_water:
+    trigger: "sump_sensor.water_level > 80%"
+    action:
+      - "sump_pump.force_on()"
+      - "notify('Sump water level high')"
+      
+  # Vacation mode
+  vacation_leak:
+    trigger: "water_leak.detected AND mode = vacation"
+    action:
+      - "water_valve.close()"
+      - "notify.emergency('Water leak at home!')"
+      - "camera.record(location)"
+
+# Maintenance
+maintenance:
+  - "Test monthly with wet cloth"
+  - "Clean probes quarterly"
+  - "Replace battery annually"
+  - "Check cable sensors for damage"
+  - "Verify buzzer operation"
+
+# Notes
+notes:
+  - "Power probes intermittently to prevent corrosion"
+  - "Use gold-plated probes for longevity"
+  - "Install at lowest point where water collects"
+  - "Consider multiple sensors for redundancy"
+  - "Cable sensors detect along entire length"

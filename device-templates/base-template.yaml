@@ -1,0 +1,141 @@
+# Base Device Template Schema
+# This defines the standard structure for all device templates
+
+device_info:
+  # Required fields
+  device_id: "${DEVICE_ID}"           # Unique identifier
+  device_type: "sensor"               # sensor, switch, light, etc.
+  name: "${DEVICE_NAME}"              # Human-readable name
+  
+  # Optional fields
+  manufacturer: "${MANUFACTURER}"      # Device manufacturer
+  model: "${MODEL}"                   # Device model
+  hw_version: "${HW_VERSION}"         # Hardware version
+  sw_version: "${SW_VERSION}"         # Software version
+  
+  # Location info
+  location:
+    room: "${ROOM}"                   # Room name
+    area: "${AREA}"                   # Area/zone
+    floor: "${FLOOR}"                 # Floor number
+
+# Device capabilities
+capabilities:
+  # For sensors
+  sensors: []                         # List of sensor types
+  units: {}                          # Units for each sensor
+  accuracy: {}                       # Accuracy specifications
+  
+  # For actuators
+  commands: []                        # Supported commands
+  features: []                        # Additional features
+  
+  # Common capabilities
+  configurable: []                    # Configurable parameters
+  updateable: true                    # OTA update support
+
+# NATS configuration
+nats:
+  # Subject patterns
+  subjects:
+    state: "home.devices.${device_type}.${device_id}.state"
+    command: "home.devices.${device_type}.${device_id}.command"
+    event: "home.devices.${device_type}.${device_id}.event"
+    health: "home.devices.${device_type}.${device_id}.health"
+    config: "home.config.device.${device_id}"
+  
+  # Discovery
+  discovery:
+    enabled: true
+    interval: 300                     # Announce every 5 minutes
+    topic: "home.discovery.announce"
+
+# State reporting
+state:
+  # Reporting intervals
+  intervals:
+    normal: 60                        # Normal reporting (seconds)
+    rapid: 5                          # Rapid reporting when changing
+    health: 300                       # Health status interval
+  
+  # State format
+  format:
+    timestamp: true                   # Include timestamp
+    device_id: true                   # Include device ID
+    attributes: true                  # Include extra attributes
+
+# Command handling
+commands:
+  # Response settings
+  response:
+    timeout: 5000                     # Command timeout (ms)
+    acknowledge: true                 # Send acknowledgment
+    
+  # Supported commands (device-specific)
+  supported: {}
+
+# Configuration
+configuration:
+  # Default values
+  defaults: {}
+  
+  # Validation rules
+  validation: {}
+  
+  # Storage
+  persistent: true                    # Store in NATS KV
+  
+# Health monitoring
+health:
+  # Metrics to report
+  metrics:
+    - uptime
+    - free_memory
+    - rssi
+    - error_count
+    
+  # Thresholds for alerts
+  thresholds:
+    rssi_low: -80
+    memory_low: 10240
+    error_max: 10
+
+# Power management
+power:
+  # Sleep modes
+  sleep:
+    enabled: false
+    mode: "light"                     # light, deep, hibernate
+    duration: 0                       # 0 = until interrupt
+    
+  # Battery monitoring
+  battery:
+    type: "none"                      # none, coin, lipo, aa
+    monitor: false
+    low_threshold: 20                 # Percentage
+
+# Network settings
+network:
+  # WiFi settings
+  wifi:
+    ssid: "${WIFI_SSID}"
+    password: "${WIFI_PASSWORD}"
+    
+  # Failover
+  failover:
+    enabled: false
+    ap_mode: false                    # Create AP on failure
+    
+# Update settings
+updates:
+  # OTA configuration
+  ota:
+    enabled: true
+    port: 3232
+    password: "${OTA_PASSWORD}"
+    
+  # Auto-update
+  auto_update:
+    enabled: false
+    check_interval: 86400             # Daily
+    time_window: "02:00-04:00"        # Update window

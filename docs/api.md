@@ -367,6 +367,135 @@ nats kv add CONFIG \
 - `TIMEOUT`: Request timeout
 - `INTERNAL_ERROR`: Device internal error
 
+## Service-Specific Subjects
+
+### Health Monitoring Service
+
+#### Device Health Status
+```
+home.health.device.{id}.status
+```
+
+**Purpose**: Publish device health status  
+**Publishers**: Health monitoring service  
+**Interval**: Every 30 seconds
+
+**Message Format**:
+```json
+{
+  "device_id": "sensor01",
+  "online": true,
+  "last_seen": "2024-01-15T10:30:00Z",
+  "response_time_ms": 125,
+  "battery_level": 85,
+  "signal_strength": -65,
+  "error_count": 0,
+  "uptime_hours": 240
+}
+```
+
+#### Health Alerts
+```
+home.health.alerts
+```
+
+**Purpose**: Health-related alerts and warnings  
+**Publishers**: Health monitoring service
+
+**Message Format**:
+```json
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "alert_type": "device_offline",
+  "severity": "warning",
+  "device_id": "sensor01",
+  "message": "Device has been offline for 5 minutes",
+  "suggested_action": "Check device power and network connection"
+}
+```
+
+### Management UI WebSocket Events
+
+#### Device Discovery
+```
+home.discovery.start
+```
+
+**Purpose**: Trigger device discovery across all bridges  
+**Publishers**: Management UI, CLI tools
+
+**Message Format**:
+```json
+{
+  "action": "discover",
+  "timestamp": 1234567890,
+  "timeout": 30,
+  "initiated_by": "management_ui"
+}
+```
+
+#### Scene Activation
+```
+home.scenes.{id}.activate
+```
+
+**Purpose**: Activate a predefined scene  
+**Publishers**: Management UI, automations
+
+**Message Format**:
+```json
+{
+  "scene_id": "night_mode",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "triggered_by": "user_action"
+}
+```
+
+### Zigbee2MQTT Bridge Subjects
+
+#### Zigbee Device State
+```
+home.devices.zigbee.{id}.state
+```
+
+**Purpose**: Zigbee device state updates  
+**Publishers**: Zigbee2MQTT bridge
+
+**Message Format**:
+```json
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "device_id": "zigbee_sensor01",
+  "ieee_address": "0x00124b001234567",
+  "type": "sensor",
+  "state": {
+    "temperature": 22.5,
+    "humidity": 45,
+    "pressure": 1013,
+    "battery": 90,
+    "linkquality": 255
+  }
+}
+```
+
+#### Zigbee Device Commands
+```
+home.devices.zigbee.{id}.set
+```
+
+**Purpose**: Send commands to Zigbee devices  
+**Pattern**: Request-Reply
+
+**Request Format**:
+```json
+{
+  "state": "on",
+  "brightness": 254,
+  "color_temp": 350,
+  "transition": 2
+}
+```
+
 ## Best Practices
 
 1. **Subject Naming**:

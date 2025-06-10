@@ -41,16 +41,30 @@ The messaging backbone consists of:
 - Listens on `home.discovery.announce`
 - Maintains device registry in KV store
 - Publishes device availability events
+- Handles device type detection and classification
+
+#### Health Monitoring Service
+- Tracks device online/offline status
+- Monitors device metrics (battery, signal strength)
+- Provides real-time health dashboard
+- Generates alerts for device issues
+
+#### Management UI Service
+- Web-based management interface
+- Real-time device control and monitoring
+- Automation and scene management
+- WebSocket connection for live updates
 
 #### Configuration Service
 - Manages device configurations via KV store
 - Handles configuration updates and rollbacks
 - Provides versioned configuration history
 
-#### Automation Engine
+#### Automation Engine (Planned)
 - Subscribes to device events
 - Executes automation rules
-- Publishes commands to devices
+- Supports complex conditions and actions
+- Visual rule builder interface
 
 ### 4. Integration Layer
 
@@ -61,10 +75,13 @@ The messaging backbone consists of:
 - WebSocket API support
 
 #### Protocol Bridges
-- MQTT to NATS bridge
-- Zigbee2MQTT adapter
-- Z-Wave JS integration
-- Generic HTTP/REST bridge
+- MQTT to NATS bridge (implemented)
+- Zigbee2MQTT to NATS bridge (implemented)
+  - Automatic device type detection
+  - Bidirectional state synchronization
+  - Command translation
+- Z-Wave JS integration (planned)
+- Generic HTTP/REST bridge (planned)
 
 ## Message Flow
 

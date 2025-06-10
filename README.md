@@ -38,6 +38,9 @@ The system uses a microservices architecture with NATS as the central messaging 
 - **Discovery Service**: Automatic device detection and registration ✅
 - **Arduino Library**: Native NATS client for Arduino/ESP boards ✅
 - **CLI & TUI Tools**: Management interfaces for the system ✅
+- **Zigbee2MQTT Bridge**: Bridge for Zigbee devices via Zigbee2MQTT ✅
+- **Health Monitoring**: Real-time device health monitoring dashboard ✅
+- **Management UI**: Web-based management interface ✅
 
 ## Getting Started
 
@@ -70,8 +73,10 @@ task setup-dev
 task dev
 
 # Or run services individually
-task infra:start-dev    # Start NATS server
+task infra:start-dev         # Start NATS server
 task services:discovery:run  # Start discovery service
+task services:health:run     # Start health monitor
+task services:ui:run         # Start management UI (http://localhost:8081)
 ```
 
 4. Test the system:
@@ -143,9 +148,12 @@ nats-home-automation/
 │   └── custom_components/
 │       └── nats_bridge/  # Full HA integration
 ├── bridges/              # Protocol bridges
-│   └── mqtt-nats/        # MQTT to NATS bridge
+│   ├── mqtt-nats/        # MQTT to NATS bridge
+│   └── zigbee2mqtt-nats/ # Zigbee2MQTT bridge
 ├── services/             # Microservices
-│   └── discovery/        # Device discovery service
+│   ├── discovery/        # Device discovery service
+│   ├── health-monitor/   # Device health monitoring
+│   └── management-ui/    # Web management interface
 ├── tools/                # CLI and TUI tools
 │   └── nats-ha-cli/      # Management interface
 ├── arduino-nats-client/  # Arduino library
@@ -179,18 +187,21 @@ home.events.{type}                    # System events
 - ✅ Arduino library for native NATS support
 - ✅ CLI and TUI management tools
 - ✅ Comprehensive Taskfile automation
+- ✅ Zigbee2MQTT to NATS bridge
+- ✅ Web-based management UI with real-time updates
+- ✅ Device health monitoring dashboard
+- ✅ Quick actions and scene support
 
 ### Roadmap
 
-- [ ] Zigbee2MQTT to NATS bridge
 - [ ] Z-Wave JS integration
-- [ ] Web-based management UI
-- [ ] Advanced automation engine
+- [ ] Advanced automation engine with visual builder
 - [ ] Multi-site synchronization
 - [ ] Voice assistant integration
 - [ ] Energy monitoring dashboard
 - [ ] Device templates library
 - [ ] MicroPython NATS client
+- [ ] Mobile app
 
 ## Performance
 

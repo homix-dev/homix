@@ -1,0 +1,120 @@
+# Example Scene Configurations for NATS Home Automation
+
+scenes:
+  - id: "morning_routine"
+    name: "Morning Routine"
+    description: "Wake up gently with gradual lighting"
+    icon: "fa-sun"
+    entities:
+      - device_id: "bedroom_light"
+        command: "set"
+        data:
+          state: "on"
+          brightness: 30
+          color_temp: 2700
+      - device_id: "kitchen_light"
+        command: "set"
+        data:
+          state: "on"
+          brightness: 100
+      - device_id: "coffee_maker"
+        command: "set"
+        data:
+          state: "on"
+
+  - id: "night_mode"
+    name: "Night Mode"
+    description: "Prepare home for sleep"
+    icon: "fa-moon"
+    entities:
+      - device_id: "living_room_light"
+        command: "set"
+        data:
+          state: "off"
+      - device_id: "kitchen_light"
+        command: "set"
+        data:
+          state: "off"
+      - device_id: "hallway_light"
+        command: "set"
+        data:
+          state: "on"
+          brightness: 10
+      - device_id: "bedroom_light"
+        command: "set"
+        data:
+          state: "on"
+          brightness: 20
+          color_temp: 2200
+
+  - id: "away_mode"
+    name: "Away Mode"
+    description: "Secure home when away"
+    icon: "fa-lock"
+    entities:
+      - device_id: "all_lights"
+        command: "set"
+        data:
+          state: "off"
+      - device_id: "security_system"
+        command: "set"
+        data:
+          armed: true
+          mode: "away"
+      - device_id: "thermostat"
+        command: "set"
+        data:
+          mode: "eco"
+          
+  - id: "movie_time"
+    name: "Movie Time"
+    description: "Dim lights for movie watching"
+    icon: "fa-film"
+    entities:
+      - device_id: "living_room_light"
+        command: "set"
+        data:
+          state: "on"
+          brightness: 15
+          color:
+            r: 255
+            g: 147
+            b: 41
+      - device_id: "tv_backlight"
+        command: "set"
+        data:
+          state: "on"
+          brightness: 50
+      - device_id: "kitchen_light"
+        command: "set"
+        data:
+          state: "off"
+
+  - id: "dinner_party"
+    name: "Dinner Party"
+    description: "Set the mood for entertaining"
+    icon: "fa-utensils"
+    entities:
+      - device_id: "dining_room_light"
+        command: "set"
+        data:
+          state: "on"
+          brightness: 70
+          color_temp: 3000
+      - device_id: "kitchen_light"
+        command: "set"
+        data:
+          state: "on"
+          brightness: 100
+      - device_id: "living_room_light"
+        command: "set"
+        data:
+          state: "on"
+          brightness: 40
+          color_temp: 2700
+      - device_id: "music_player"
+        command: "set"
+        data:
+          state: "on"
+          playlist: "dinner_jazz"
+          volume: 30

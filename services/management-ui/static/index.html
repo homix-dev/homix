@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NATS Home Automation - Management UI</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h2>NATS Home</h2>
+                <span class="version">v1.0.0</span>
+            </div>
+            
+            <ul class="nav-menu">
+                <li class="nav-item active" data-page="dashboard">
+                    <i class="fas fa-home"></i>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" data-page="devices">
+                    <i class="fas fa-plug"></i>
+                    <span>Devices</span>
+                </li>
+                <li class="nav-item" data-page="automations">
+                    <i class="fas fa-robot"></i>
+                    <span>Automations</span>
+                </li>
+                <li class="nav-item" data-page="scenes">
+                    <i class="fas fa-palette"></i>
+                    <span>Scenes</span>
+                </li>
+                <li class="nav-item" data-page="events">
+                    <i class="fas fa-list"></i>
+                    <span>Events</span>
+                </li>
+                <li class="nav-item" data-page="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </li>
+            </ul>
+            
+            <div class="sidebar-footer">
+                <div class="connection-status">
+                    <span class="status-dot" id="ws-status"></span>
+                    <span id="ws-status-text">Connecting...</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="app-header">
+                <div class="header-left">
+                    <button class="menu-toggle" id="menu-toggle">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h1 id="page-title">Dashboard</h1>
+                </div>
+                
+                <div class="header-right">
+                    <button class="icon-button" id="refresh-btn">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="icon-button" id="notifications-btn">
+                        <i class="fas fa-bell"></i>
+                        <span class="notification-badge" style="display: none;">0</span>
+                    </button>
+                    <div class="user-menu">
+                        <img src="img/user-avatar.png" alt="User" class="user-avatar">
+                        <span class="user-name">Admin</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <div class="page-content" id="page-content">
+                <!-- Dashboard Page -->
+                <div class="page" id="dashboard-page">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon devices">
+                                <i class="fas fa-plug"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Total Devices</h3>
+                                <p class="stat-value" id="stat-total-devices">0</p>
+                                <span class="stat-change">
+                                    <span id="stat-online-devices">0</span> online
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon automations">
+                                <i class="fas fa-robot"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Automations</h3>
+                                <p class="stat-value" id="stat-automations">0</p>
+                                <span class="stat-change">
+                                    <span id="stat-active-automations">0</span> active
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon scenes">
+                                <i class="fas fa-palette"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Scenes</h3>
+                                <p class="stat-value" id="stat-scenes">0</p>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon events">
+                                <i class="fas fa-bolt"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3>Events Today</h3>
+                                <p class="stat-value" id="stat-events">0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Recent Devices</h3>
+                                <a href="#" class="view-all" data-page="devices">View All</a>
+                            </div>
+                            <div class="card-body">
+                                <div id="recent-devices" class="device-list">
+                                    <!-- Devices will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Quick Actions</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="quick-actions">
+                                    <button class="quick-action-btn" id="all-lights-off">
+                                        <i class="fas fa-lightbulb"></i>
+                                        All Lights Off
+                                    </button>
+                                    <button class="quick-action-btn" id="activate-away">
+                                        <i class="fas fa-home"></i>
+                                        Away Mode
+                                    </button>
+                                    <button class="quick-action-btn" id="activate-night">
+                                        <i class="fas fa-moon"></i>
+                                        Night Mode
+                                    </button>
+                                    <button class="quick-action-btn" id="run-discovery">
+                                        <i class="fas fa-search"></i>
+                                        Discover Devices
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card full-width">
+                            <div class="card-header">
+                                <h3>Recent Events</h3>
+                                <a href="#" class="view-all" data-page="events">View All</a>
+                            </div>
+                            <div class="card-body">
+                                <div id="recent-events" class="event-list">
+                                    <!-- Events will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Devices Page -->
+                <div class="page" id="devices-page" style="display: none;">
+                    <div class="page-header">
+                        <div class="page-actions">
+                            <input type="text" class="search-input" placeholder="Search devices..." id="device-search">
+                            <select class="filter-select" id="device-type-filter">
+                                <option value="">All Types</option>
+                                <option value="sensor">Sensors</option>
+                                <option value="switch">Switches</option>
+                                <option value="light">Lights</option>
+                                <option value="climate">Climate</option>
+                            </select>
+                            <button class="btn btn-primary" id="add-device-btn">
+                                <i class="fas fa-plus"></i> Add Device
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="devices-grid" id="devices-grid">
+                        <!-- Device cards will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Automations Page -->
+                <div class="page" id="automations-page" style="display: none;">
+                    <div class="page-header">
+                        <div class="page-actions">
+                            <input type="text" class="search-input" placeholder="Search automations..." id="automation-search">
+                            <button class="btn btn-primary" id="create-automation-btn">
+                                <i class="fas fa-plus"></i> Create Automation
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="automations-list" id="automations-list">
+                        <!-- Automations will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Scenes Page -->
+                <div class="page" id="scenes-page" style="display: none;">
+                    <div class="page-header">
+                        <div class="page-actions">
+                            <button class="btn btn-primary" id="create-scene-btn">
+                                <i class="fas fa-plus"></i> Create Scene
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="scenes-grid" id="scenes-grid">
+                        <!-- Scene cards will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Events Page -->
+                <div class="page" id="events-page" style="display: none;">
+                    <div class="page-header">
+                        <div class="page-actions">
+                            <input type="text" class="search-input" placeholder="Search events..." id="event-search">
+                            <select class="filter-select" id="event-type-filter">
+                                <option value="">All Events</option>
+                                <option value="device">Device Events</option>
+                                <option value="automation">Automation Events</option>
+                                <option value="system">System Events</option>
+                            </select>
+                            <button class="btn btn-secondary" id="clear-events-btn">
+                                <i class="fas fa-trash"></i> Clear Events
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="events-table">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Type</th>
+                                    <th>Source</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody id="events-table-body">
+                                <!-- Events will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Settings Page -->
+                <div class="page" id="settings-page" style="display: none;">
+                    <div class="settings-container">
+                        <div class="settings-section">
+                            <h3>System Configuration</h3>
+                            <div class="settings-group">
+                                <label>NATS Server URL</label>
+                                <input type="text" class="form-control" id="nats-url" value="nats://localhost:4222">
+                            </div>
+                            <div class="settings-group">
+                                <label>Update Interval (seconds)</label>
+                                <input type="number" class="form-control" id="update-interval" value="30">
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h3>User Preferences</h3>
+                            <div class="settings-group">
+                                <label>Theme</label>
+                                <select class="form-control" id="theme-select">
+                                    <option value="light">Light</option>
+                                    <option value="dark">Dark</option>
+                                    <option value="auto">Auto</option>
+                                </select>
+                            </div>
+                            <div class="settings-group">
+                                <label>
+                                    <input type="checkbox" id="notifications-enabled">
+                                    Enable Notifications
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-actions">
+                            <button class="btn btn-primary" id="save-settings-btn">Save Settings</button>
+                            <button class="btn btn-secondary" id="reset-settings-btn">Reset to Defaults</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <!-- Device Modal -->
+    <div class="modal" id="device-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="device-modal-title">Device Details</h2>
+                <button class="close-btn" data-close-modal>&times;</button>
+            </div>
+            <div class="modal-body" id="device-modal-body">
+                <!-- Device details will be populated here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close-modal>Close</button>
+                <button class="btn btn-primary" id="save-device-btn">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Automation Modal -->
+    <div class="modal" id="automation-modal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h2 id="automation-modal-title">Create Automation</h2>
+                <button class="close-btn" data-close-modal>&times;</button>
+            </div>
+            <div class="modal-body" id="automation-modal-body">
+                <!-- Automation builder will be populated here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close-modal>Cancel</button>
+                <button class="btn btn-primary" id="save-automation-btn">Save Automation</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scene Modal -->
+    <div class="modal" id="scene-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="scene-modal-title">Create Scene</h2>
+                <button class="close-btn" data-close-modal>&times;</button>
+            </div>
+            <div class="modal-body" id="scene-modal-body">
+                <!-- Scene editor will be populated here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close-modal>Cancel</button>
+                <button class="btn btn-primary" id="save-scene-btn">Save Scene</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="js/api.js"></script>
+    <script src="js/websocket.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

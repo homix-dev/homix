@@ -1,0 +1,95 @@
+version: '3'
+
+vars:
+  SERVICE: management-ui
+  BINARY: nats-home-{{.SERVICE}}
+  DOCKER_IMAGE: nats-home/{{.SERVICE}}
+  CONFIG_FILE: config.yaml
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task -l
+
+  run:
+    desc: Run the management UI service
+    cmds:
+      - go run cmd/{{.SERVICE}}/main.go -config {{.CONFIG_FILE}}
+
+  build:
+    desc: Build the service binary
+    cmds:
+      - go build -o {{.BINARY}} cmd/{{.SERVICE}}/main.go
+    sources:
+      - ./**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - ./{{.BINARY}}
+
+  docker:build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t {{.DOCKER_IMAGE}}:latest .
+
+  docker:run:
+    desc: Run service in Docker
+    deps: [docker:build]
+    cmds:
+      - |
+        docker run --rm -it \
+          --name {{.SERVICE}} \
+          -p 8081:8081 \
+          -v $(pwd)/config.yaml:/app/config.yaml:ro \
+          --network host \
+          {{.DOCKER_IMAGE}}:latest
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v ./...
+
+  lint:
+    desc: Run linter
+    cmds:
+      - golangci-lint run
+
+  fmt:
+    desc: Format code
+    cmds:
+      - go fmt ./...
+
+  tidy:
+    desc: Tidy dependencies
+    cmds:
+      - go mod tidy
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -f {{.BINARY}}
+
+  dev:
+    desc: Run in development mode with auto-reload
+    cmds:
+      - |
+        which air > /dev/null || go install github.com/cosmtrek/air@latest
+        air -c .air.toml
+
+  setup:
+    desc: Setup development environment
+    cmds:
+      - go mod download
+      - task: tidy
+      - |
+        cat > .air.toml << EOF
+        root = "."
+        tmp_dir = "tmp"
+        
+        [build]
+        cmd = "go build -o ./tmp/main cmd/{{.SERVICE}}/main.go"
+        bin = "tmp/main -config {{.CONFIG_FILE}}"
+        include_ext = ["go", "yaml", "html", "css", "js"]
+        exclude_dir = ["tmp", "vendor", "node_modules"]
+        EOF

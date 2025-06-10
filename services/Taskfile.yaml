@@ -3,6 +3,7 @@ version: '3'
 includes:
   discovery: ./discovery/Taskfile.yaml
   health: ./health-monitor/Taskfile.yaml
+  ui: ./management-ui/Taskfile.yaml
 
 tasks:
   build:
@@ -10,32 +11,56 @@ tasks:
     cmds:
       - task: discovery:build
       - task: health:build
+      - task: ui:build
 
   test:
     desc: Test all services
     cmds:
       - task: discovery:test
       - task: health:test
+      - task: ui:test
 
   lint:
     desc: Lint all services
     cmds:
       - task: discovery:lint
       - task: health:lint
+      - task: ui:lint
 
   format:
     desc: Format all services
     cmds:
       - task: discovery:format
+      - task: health:fmt
+      - task: ui:fmt
 
   clean:
     desc: Clean all services
     cmds:
       - task: discovery:clean
       - task: health:clean
+      - task: ui:clean
 
   install:
     desc: Install all services
     cmds:
       - task: discovery:install
       - task: health:install
+
+  run:all:
+    desc: Run all services (use separate terminals)
+    cmds:
+      - echo "Start each service in a separate terminal:"
+      - echo "  task services:discovery:run"
+      - echo "  task services:health:run" 
+      - echo "  task services:ui:run"
+
+  dev:
+    desc: Run all services in development mode
+    cmds:
+      - echo "Starting all services..."
+      - echo "Discovery: http://localhost:8080"
+      - echo "Health Monitor: http://localhost:8082"
+      - echo "Management UI: http://localhost:8081"
+      - echo ""
+      - echo "Run each in a separate terminal or use a process manager"

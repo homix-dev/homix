@@ -9,11 +9,15 @@ class App {
         this.selectedDevice = null;
         this.selectedAutomation = null;
         this.selectedScene = null;
+        this.startTime = Date.now();
     }
 
     async init() {
         // Initialize UI event handlers
         this.initEventHandlers();
+        
+        // Update user avatar
+        this.updateUserAvatar();
         
         // Connect WebSocket
         wsManager.connect();
@@ -26,6 +30,29 @@ class App {
         
         // Show dashboard
         this.showPage('dashboard');
+    }
+    
+    updateUserAvatar() {
+        // Get user info from auth
+        const user = auth.getUser();
+        if (user && user.name) {
+            // Update avatar
+            const avatarImg = document.querySelector('.user-avatar');
+            if (avatarImg) {
+                avatarImg.src = avatarGenerator.generateDataURL(user.name, 32);
+            }
+            
+            // Update user name displays
+            const userName = document.getElementById('user-name');
+            if (userName) {
+                userName.textContent = user.username || 'Admin';
+            }
+            
+            const userFullname = document.getElementById('user-fullname');
+            if (userFullname) {
+                userFullname.textContent = user.name || 'Administrator';
+            }
+        }
     }
 
     initEventHandlers() {
@@ -63,6 +90,9 @@ class App {
         this.initAutomationHandlers();
         this.initSceneHandlers();
         this.initSettingsHandlers();
+
+        // User menu handler
+        this.initUserMenu();
 
         // Search and filter handlers
         document.getElementById('device-search').addEventListener('input', (e) => {
@@ -119,8 +149,8 @@ class App {
             this.showCreateAutomation();
         });
 
-        document.getElementById('save-automation-btn').addEventListener('click', () => {
-            this.saveAutomation();
+        document.getElementById('save-automation-btn').addEventListener('click', async () => {
+            await this.saveAutomation();
         });
     }
 
@@ -129,8 +159,8 @@ class App {
             this.showCreateScene();
         });
 
-        document.getElementById('save-scene-btn').addEventListener('click', () => {
-            this.saveScene();
+        document.getElementById('save-scene-btn').addEventListener('click', async () => {
+            await this.saveScene();
         });
     }
 
@@ -216,17 +246,33 @@ class App {
 
     loadAutomations(automations) {
         this.automations.clear();
-        automations.forEach(automation => {
-            this.automations.set(automation.id, automation);
-        });
+        // Handle both array and object formats
+        if (Array.isArray(automations)) {
+            automations.forEach(automation => {
+                this.automations.set(automation.id, automation);
+            });
+        } else if (automations && typeof automations === 'object') {
+            // If it's an object, convert to array
+            Object.values(automations).forEach(automation => {
+                this.automations.set(automation.id, automation);
+            });
+        }
         this.updateAutomationDisplays();
     }
 
     loadScenes(scenes) {
         this.scenes.clear();
-        scenes.forEach(scene => {
-            this.scenes.set(scene.id, scene);
-        });
+        // Handle both array and object formats
+        if (Array.isArray(scenes)) {
+            scenes.forEach(scene => {
+                this.scenes.set(scene.id, scene);
+            });
+        } else if (scenes && typeof scenes === 'object') {
+            // If it's an object, convert to array
+            Object.values(scenes).forEach(scene => {
+                this.scenes.set(scene.id, scene);
+            });
+        }
         this.updateSceneDisplays();
     }
 
@@ -288,6 +334,7 @@ class App {
             automations: 'Automations',
             scenes: 'Scenes',
             events: 'Events',
+            monitoring: 'Health Monitor',
             settings: 'Settings'
         };
         document.getElementById('page-title').textContent = titles[page] || page;
@@ -314,6 +361,13 @@ class App {
                 break;
             case 'events':
                 this.updateEventTable();
+                break;
+            case 'monitoring':
+                if (!window.monitoring.updateInterval) {
+                    window.monitoring.init();
+                } else {
+                    window.monitoring.updateDisplay();
+                }
                 break;
         }
     }
@@ -491,50 +545,97 @@ class App {
         if (!device) return;
 
         this.selectedDevice = device;
-
-        const modalBody = document.getElementById('device-modal-body');
-        modalBody.innerHTML = `
-            <div class="device-details-form">
-                <div class="form-group">
-                    <label>Device Name</label>
-                    <input type="text" id="device-name-input" class="form-control" value="${device.name || device.id}">
-                </div>
-                <div class="form-group">
-                    <label>Device ID</label>
-                    <input type="text" class="form-control" value="${device.id}" disabled>
-                </div>
-                <div class="form-group">
-                    <label>Type</label>
-                    <input type="text" class="form-control" value="${device.type}" disabled>
-                </div>
-                <div class="form-group">
-                    <label>Manufacturer</label>
-                    <input type="text" class="form-control" value="${device.manufacturer || 'Unknown'}" disabled>
-                </div>
-                <div class="form-group">
-                    <label>Model</label>
-                    <input type="text" class="form-control" value="${device.model || 'Unknown'}" disabled>
-                </div>
-                <div class="form-group">
-                    <label>Status</label>
-                    <input type="text" class="form-control" value="${device.online ? 'Online' : 'Offline'}" disabled>
-                </div>
-                <div class="form-group">
-                    <label>Last Seen</label>
-                    <input type="text" class="form-control" value="${new Date(device.last_seen).toLocaleString()}" disabled>
-                </div>
-                ${device.state ? `
-                    <div class="form-group">
-                        <label>Current State</label>
-                        <pre class="state-display">${JSON.stringify(UI.formatDeviceState(device.state), null, 2)}</pre>
-                    </div>
-                ` : ''}
-            </div>
-        `;
+        
+        // Use the enhanced device controls
+        deviceControls.init(device);
 
         document.getElementById('device-modal-title').textContent = `Device: ${device.name || device.id}`;
-        document.getElementById('save-device-btn').style.display = 'inline-flex';
+        document.getElementById('save-device-btn').style.display = 'none'; // Hide save button for now
         UI.showModal('device-modal');
+    }
+
+    showAddDevice() {
+        // Clear selected device
+        this.selectedDevice = null;
+        
+        // Create form for new device
+        const modalBody = document.getElementById('device-modal-body');
+        modalBody.innerHTML = `
+            <div class="form-group">
+                <label>Device Name</label>
+                <input type="text" id="new-device-name" class="form-control" placeholder="e.g., Living Room Light">
+            </div>
+            <div class="form-group">
+                <label>Device Type</label>
+                <select id="new-device-type" class="form-control">
+                    <option value="">Select a type</option>
+                    <option value="light">Light</option>
+                    <option value="switch">Switch</option>
+                    <option value="sensor">Sensor</option>
+                    <option value="thermostat">Thermostat</option>
+                    <option value="camera">Camera</option>
+                    <option value="lock">Lock</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Room</label>
+                <input type="text" id="new-device-room" class="form-control" placeholder="e.g., Living Room">
+            </div>
+            <div class="form-group">
+                <label>Device ID (optional)</label>
+                <input type="text" id="new-device-id" class="form-control" placeholder="Leave empty for auto-generated ID">
+            </div>
+        `;
+        
+        // Update modal title and show save button
+        document.getElementById('device-modal-title').textContent = 'Add New Device';
+        document.getElementById('save-device-btn').style.display = 'block';
+        document.getElementById('save-device-btn').textContent = 'Add Device';
+        
+        // Update save button handler
+        document.getElementById('save-device-btn').onclick = () => this.createDevice();
+        
+        UI.showModal('device-modal');
+    }
+    
+    async createDevice() {
+        const name = document.getElementById('new-device-name').value;
+        const type = document.getElementById('new-device-type').value;
+        const room = document.getElementById('new-device-room').value;
+        const id = document.getElementById('new-device-id').value;
+        
+        if (!name || !type) {
+            UI.showToast('Please provide device name and type', 'error');
+            return;
+        }
+        
+        const deviceData = {
+            name,
+            type,
+            room: room || 'Unknown',
+            config: {}
+        };
+        
+        if (id) {
+            deviceData.id = id;
+        }
+        
+        try {
+            const newDevice = await API.createDevice(deviceData);
+            
+            // Add to local devices map
+            this.devices.set(newDevice.id, newDevice);
+            
+            // Update UI - convert map to array for loadDevices
+            const devicesArray = Array.from(this.devices.values());
+            this.loadDevices(devicesArray);
+            
+            UI.hideModal('device-modal');
+            UI.showToast('Device added successfully', 'success');
+        } catch (error) {
+            console.error('Error creating device:', error);
+            UI.showToast('Failed to add device', 'error');
+        }
     }
 
     async saveDevice() {
@@ -579,8 +680,9 @@ class App {
         if (!automation) return;
 
         this.selectedAutomation = automation;
-        // TODO: Implement automation editor
-        UI.showToast('Automation editor coming soon', 'info');
+        automationBuilder.init(automation);
+        document.getElementById('automation-modal-title').textContent = 'Edit Automation';
+        UI.showModal('automation-modal');
     }
 
     async testAutomation(automationId) {
@@ -609,8 +711,47 @@ class App {
 
     showCreateAutomation() {
         this.selectedAutomation = null;
-        // TODO: Implement automation builder
-        UI.showToast('Automation builder coming soon', 'info');
+        automationBuilder.init();
+        document.getElementById('automation-modal-title').textContent = 'Create Automation';
+        UI.showModal('automation-modal');
+    }
+
+    async saveAutomation() {
+        const automationData = automationBuilder.getAutomationData();
+        
+        if (!automationData.name) {
+            UI.showToast('Please enter an automation name', 'error');
+            return;
+        }
+        
+        if (automationData.triggers.length === 0) {
+            UI.showToast('Please add at least one trigger', 'error');
+            return;
+        }
+        
+        if (automationData.actions.length === 0) {
+            UI.showToast('Please add at least one action', 'error');
+            return;
+        }
+        
+        try {
+            if (this.selectedAutomation) {
+                // Update existing automation
+                await API.updateAutomation(this.selectedAutomation.id, automationData);
+                Object.assign(this.selectedAutomation, automationData);
+                UI.showToast('Automation updated successfully', 'success');
+            } else {
+                // Create new automation
+                const newAutomation = await API.createAutomation(automationData);
+                this.automations.set(newAutomation.id, newAutomation);
+                UI.showToast('Automation created successfully', 'success');
+            }
+            
+            this.updateAutomationDisplays();
+            UI.hideModal('automation-modal');
+        } catch (error) {
+            UI.showToast('Failed to save automation', 'error');
+        }
     }
 
     // Scene actions
@@ -625,8 +766,67 @@ class App {
 
     showCreateScene() {
         this.selectedScene = null;
-        // TODO: Implement scene editor
-        UI.showToast('Scene editor coming soon', 'info');
+        sceneEditor.init();
+        document.getElementById('scene-modal-title').textContent = 'Create Scene';
+        UI.showModal('scene-modal');
+    }
+
+    async editScene(sceneId) {
+        const scene = this.scenes.get(sceneId);
+        if (!scene) return;
+
+        this.selectedScene = scene;
+        sceneEditor.init(scene);
+        document.getElementById('scene-modal-title').textContent = 'Edit Scene';
+        UI.showModal('scene-modal');
+    }
+
+    async saveScene() {
+        const sceneData = sceneEditor.getSceneData();
+        
+        if (!sceneData.name) {
+            UI.showToast('Please enter a scene name', 'error');
+            return;
+        }
+        
+        if (sceneData.devices.length === 0) {
+            UI.showToast('Please add at least one device to the scene', 'error');
+            return;
+        }
+        
+        try {
+            if (this.selectedScene) {
+                // Update existing scene
+                await API.updateScene(this.selectedScene.id, sceneData);
+                Object.assign(this.selectedScene, sceneData);
+                UI.showToast('Scene updated successfully', 'success');
+            } else {
+                // Create new scene
+                const newScene = await API.createScene(sceneData);
+                this.scenes.set(newScene.id, newScene);
+                UI.showToast('Scene created successfully', 'success');
+            }
+            
+            this.updateSceneDisplays();
+            UI.hideModal('scene-modal');
+        } catch (error) {
+            UI.showToast('Failed to save scene', 'error');
+        }
+    }
+
+    async deleteScene(sceneId) {
+        if (!confirm('Are you sure you want to delete this scene?')) {
+            return;
+        }
+
+        try {
+            await API.deleteScene(sceneId);
+            this.scenes.delete(sceneId);
+            this.updateSceneDisplays();
+            UI.showToast('Scene deleted', 'success');
+        } catch (error) {
+            UI.showToast('Failed to delete scene', 'error');
+        }
     }
 
     // Quick actions
@@ -703,9 +903,24 @@ class App {
         try {
             UI.showToast('Starting device discovery...', 'info');
             
+            const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+            console.log('Using auth token:', token);
+            
             const response = await fetch('/api/v1/devices/discovery/start', {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
             });
+            
+            if (response.status === 401) {
+                // Session expired
+                console.error('Authentication failed - status 401');
+                console.error('Token was:', token);
+                UI.showToast('Session expired. Please refresh the page and login again.', 'error');
+                return;
+            }
             
             const result = await response.json();
             
@@ -717,7 +932,11 @@ class App {
                 
                 // Check status periodically
                 const checkInterval = setInterval(async () => {
-                    const statusResponse = await fetch('/api/v1/devices/discovery/status');
+                    const statusResponse = await fetch('/api/v1/devices/discovery/status', {
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')}`
+                        }
+                    });
                     const status = await statusResponse.json();
                     
                     if (status.data && !status.data.active) {
@@ -801,10 +1020,47 @@ class App {
         this.loadPageData(this.currentPage);
         UI.showToast('Page refreshed', 'success');
     }
+
+    initUserMenu() {
+        const userMenu = document.getElementById('user-menu');
+        
+        // Update user info from auth
+        if (auth.user) {
+            document.getElementById('user-name').textContent = auth.user.username;
+            document.getElementById('user-fullname').textContent = auth.user.name || auth.user.username;
+            document.getElementById('user-role').textContent = auth.user.role || 'User';
+        }
+        
+        // Toggle dropdown on click
+        userMenu.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userMenu.classList.toggle('active');
+        });
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            userMenu.classList.remove('active');
+        });
+        
+        // Prevent dropdown from closing when clicking inside
+        document.getElementById('user-dropdown').addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+    }
+
+    showProfile() {
+        UI.showToast('Profile page coming soon', 'info');
+    }
 }
 
 // Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    window.app = new App();
-    app.init();
+document.addEventListener('DOMContentLoaded', async () => {
+    // Initialize authentication first
+    await auth.init();
+    
+    // Only initialize app if authenticated
+    if (auth.isAuthenticated) {
+        window.app = new App();
+        app.init();
+    }
 });

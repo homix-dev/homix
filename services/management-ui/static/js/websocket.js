@@ -67,17 +67,31 @@ class WebSocketManager {
     }
 
     handleMessage(message) {
+        if (!message || typeof message !== 'object') {
+            console.warn('Invalid WebSocket message format:', message);
+            return;
+        }
+
         const { type, data } = message;
+
+        if (!type) {
+            console.warn('WebSocket message missing type:', message);
+            return;
+        }
 
         switch (type) {
             case 'initial_data':
-                this.handleInitialData(data);
+                this.handleInitialData(data || {});
                 break;
             case 'device_update':
                 this.emit('device_update', data);
                 break;
             case 'event':
-                this.emit('event', data.event);
+                if (data && data.event) {
+                    this.emit('event', data.event);
+                } else {
+                    console.warn('Event message missing event data:', message);
+                }
                 break;
             case 'command_sent':
                 this.emit('command_sent', data);

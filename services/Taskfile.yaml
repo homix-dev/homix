@@ -47,7 +47,7 @@ tasks:
       - task: discovery:install
       - task: health:install
 
-  run:all:
+  run-all:
     desc: Run all services (use separate terminals)
     cmds:
       - echo "Start each service in a separate terminal:"
@@ -58,9 +58,9 @@ tasks:
   dev:
     desc: Run all services in development mode
     cmds:
-      - echo "Starting all services..."
-      - echo "Discovery: http://localhost:8080"
-      - echo "Health Monitor: http://localhost:8082"
-      - echo "Management UI: http://localhost:8081"
-      - echo ""
-      - echo "Run each in a separate terminal or use a process manager"
+      - 'echo "Starting all services..."'
+      - 'echo "Discovery: http://localhost:8080"'
+      - 'echo "Health Monitor: http://localhost:8082"'
+      - 'echo "Management UI: http://localhost:8081"'
+      - 'echo ""'
+      - 'echo "Run each in a separate terminal or use a process manager"'

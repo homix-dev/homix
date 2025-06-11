@@ -1,0 +1,96 @@
+version: '3.8'
+
+# Production docker-compose using pre-built GHCR images
+# Use this for deployments with released container images
+
+services:
+  # NATS Server - Core messaging infrastructure
+  nats:
+    image: nats:2.11
+    container_name: nats-home-automation
+    ports:
+      - "4222:4222"   # Client connections
+      - "8222:8222"   # HTTP management
+      - "6222:6222"   # Cluster
+    volumes:
+      - ./infrastructure/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - ./infrastructure/data:/data
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/nats-server", "-ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - nats-network
+
+  # Discovery Service
+  discovery:
+    image: ghcr.io/${GITHUB_REPOSITORY:-calmera/nats-home-automation}/discovery:${IMAGE_TAG:-latest}
+    container_name: nats-discovery
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+      - CONFIG_FILE=/app/discovery.yaml
+    volumes:
+      - ./services/discovery/discovery.yaml:/app/discovery.yaml:ro
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Management UI
+  management-ui:
+    image: ghcr.io/${GITHUB_REPOSITORY:-calmera/nats-home-automation}/management-ui:${IMAGE_TAG:-latest}
+    container_name: nats-management-ui
+    ports:
+      - "8081:8081"
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+      - PORT=8081
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Health Monitor
+  health-monitor:
+    image: ghcr.io/${GITHUB_REPOSITORY:-calmera/nats-home-automation}/health-monitor:${IMAGE_TAG:-latest}
+    container_name: nats-health-monitor
+    ports:
+      - "8082:8082"
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+      - PORT=8082
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Optional: NATS CLI tools for debugging
+  nats-box:
+    image: natsio/nats-box:latest
+    container_name: nats-box
+    depends_on:
+      - nats
+    command: sleep infinity
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+    networks:
+      - nats-network
+    profiles:
+      - debug
+
+networks:
+  nats-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -2,12 +2,12 @@
 
 # NATS Configuration
 nats:
-  url: nats://localhost:4222
+  url: nats://home:changeme@localhost:4222
   credentials: ""  # Path to NATS credentials file
 
 # HTTP Server Configuration
 http:
-  addr: :8080
+  addr: :8082
   static: ./static
 
 # Monitoring Configuration

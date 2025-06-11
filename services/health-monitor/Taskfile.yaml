@@ -12,6 +12,7 @@ tasks:
 
   build:
     desc: Build the health monitor
+    dir: services/health-monitor
     cmds:
       - mkdir -p {{.BUILD_DIR}}
       - go build -o {{.BUILD_DIR}}/{{.BINARY_NAME}} .
@@ -24,6 +25,7 @@ tasks:
 
   run:
     desc: Run the health monitor with default config
+    dir: services/health-monitor
     deps: [build]
     cmds:
       - "{{.BUILD_DIR}}/{{.BINARY_NAME}} --config config.yaml"

@@ -14,13 +14,15 @@ tasks:
 
   run:
     desc: Run the management UI service
+    dir: services/management-ui
     cmds:
-      - go run cmd/{{.SERVICE}}/main.go -config {{.CONFIG_FILE}}
+      - go run main.go --config {{.CONFIG_FILE}}
 
   build:
     desc: Build the service binary
+    dir: services/management-ui
     cmds:
-      - go build -o {{.BINARY}} cmd/{{.SERVICE}}/main.go
+      - go build -o {{.BINARY}} main.go
     sources:
       - ./**/*.go
       - go.mod
@@ -88,7 +90,7 @@ tasks:
         tmp_dir = "tmp"
         
         [build]
-        cmd = "go build -o ./tmp/main cmd/{{.SERVICE}}/main.go"
+        cmd = "go build -o ./tmp/main main.go"
         bin = "tmp/main -config {{.CONFIG_FILE}}"
         include_ext = ["go", "yaml", "html", "css", "js"]
         exclude_dir = ["tmp", "vendor", "node_modules"]

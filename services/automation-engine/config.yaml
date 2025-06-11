@@ -1,0 +1,14 @@
+# Automation Engine Configuration
+
+nats:
+  url: nats://home:changeme@localhost:4222
+  # creds: /path/to/nats.creds  # Optional, if using credentials file
+
+engine:
+  # How often to check for automation updates (seconds)
+  update_interval: 30
+  # Enable debug logging for automation evaluation
+  debug_evaluation: true
+
+# Enable debug logging
+debug: true

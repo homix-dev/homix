@@ -12,6 +12,12 @@ class APIClient {
             },
         };
 
+        // Add authorization header if we have a token
+        const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+        if (token) {
+            options.headers['Authorization'] = `Bearer ${token}`;
+        }
+
         if (data && method !== 'GET') {
             options.body = JSON.stringify(data);
         }
@@ -38,6 +44,10 @@ class APIClient {
 
     async getDevice(id) {
         return this.request('GET', `/devices/${id}`);
+    }
+
+    async createDevice(data) {
+        return this.request('POST', '/devices', data);
     }
 
     async updateDevice(id, data) {

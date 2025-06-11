@@ -209,17 +209,25 @@ const UI = {
         card.dataset.sceneId = scene.id;
         
         const icon = scene.icon || 'fa-palette';
-        const deviceCount = scene.entities ? scene.entities.length : 0;
+        const deviceCount = scene.devices ? scene.devices.length : 0;
         
         card.innerHTML = `
-            <div class="scene-icon">
-                <i class="fas ${icon}"></i>
+            <div class="scene-card-content" onclick="app.activateScene('${scene.id}')">
+                <div class="scene-icon">
+                    <i class="fas ${icon}"></i>
+                </div>
+                <div class="scene-name">${scene.name}</div>
+                <div class="scene-devices">${deviceCount} device${deviceCount !== 1 ? 's' : ''}</div>
             </div>
-            <div class="scene-name">${scene.name}</div>
-            <div class="scene-devices">${deviceCount} device${deviceCount !== 1 ? 's' : ''}</div>
+            <div class="scene-card-actions">
+                <button class="icon-button" onclick="event.stopPropagation(); app.editScene('${scene.id}')" title="Edit Scene">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="icon-button" onclick="event.stopPropagation(); app.deleteScene('${scene.id}')" title="Delete Scene">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
         `;
-        
-        card.onclick = () => app.activateScene(scene.id);
         
         return card;
     },

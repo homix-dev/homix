@@ -30,6 +30,7 @@ type Server struct {
 	devices     map[string]*Device
 	automations map[string]*Automation
 	scenes      map[string]*Scene
+	sessions    map[string]*Session
 	mu          sync.RWMutex
 	
 	// WebSocket clients
@@ -68,6 +69,7 @@ func New(config *Config) (*Server, error) {
 		devices:     make(map[string]*Device),
 		automations: make(map[string]*Automation),
 		scenes:      make(map[string]*Scene),
+		sessions:    make(map[string]*Session),
 		wsClients:   make(map[string]*wsClient),
 		wsUpgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {

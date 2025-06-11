@@ -5,13 +5,32 @@ vars:
   TEST_CONFIG: examples/test-all-components.yaml
 
 tasks:
+  check-esphome:
+    desc: Check if ESPHome is installed
+    cmds:
+      - |
+        if ! command -v {{.ESPHOME_CMD}} >/dev/null 2>&1; then
+          echo "❌ ESPHome is not installed"
+          echo ""
+          echo "To install ESPHome, run:"
+          echo "  pip install esphome"
+          echo ""
+          echo "Or for development:"
+          echo "  pip install esphome[dev]"
+          exit 1
+        fi
+        echo "✅ ESPHome is installed: $({{.ESPHOME_CMD}} version)"
+    silent: true
+
   validate:
     desc: Validate ESPHome configurations
+    deps: [check-esphome]
     cmds:
       - '{{.ESPHOME_CMD}} config {{.TEST_CONFIG}}'
 
   validate-all:
     desc: Validate all example configurations
+    deps: [check-esphome]
     cmds:
       - |
         for config in examples/*.yaml; do
@@ -21,6 +40,7 @@ tasks:
 
   compile:
     desc: Compile test configuration (dry run)
+    deps: [check-esphome]
     cmds:
       - '{{.ESPHOME_CMD}} compile {{.TEST_CONFIG}}'
 
@@ -105,6 +125,7 @@ tasks:
   # Development helpers
   dev-server:
     desc: Start ESPHome dashboard
+    deps: [check-esphome]
     cmds:
       - '{{.ESPHOME_CMD}} dashboard examples/'
 

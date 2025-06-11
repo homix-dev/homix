@@ -1,0 +1,59 @@
+version: '3'
+
+vars:
+  APP_NAME: automation-engine
+  GO_FILES:
+    sh: find . -name '*.go' -not -path "./vendor/*"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task -l
+
+  build:
+    desc: Build the automation engine
+    cmds:
+      - go build -o {{.APP_NAME}} .
+    sources:
+      - '{{.GO_FILES}}'
+    generates:
+      - ./{{.APP_NAME}}
+
+  run:
+    desc: Run the automation engine
+    deps: [build]
+    cmds:
+      - ./{{.APP_NAME}}
+
+  dev:
+    desc: Run with hot reload
+    cmds:
+      - go run . --config config.yaml
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v ./...
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -f {{.APP_NAME}}
+
+  deps:
+    desc: Download dependencies
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  docker:build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t nats-home/{{.APP_NAME}}:latest .
+
+  docker:run:
+    desc: Run in Docker
+    deps: [docker:build]
+    cmds:
+      - docker run --rm -it --network host -v {{.PWD}}/config.yaml:/config.yaml nats-home/{{.APP_NAME}}:latest

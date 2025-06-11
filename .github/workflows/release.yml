@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # Build and push container images
+  build-images:
+    uses: ./.github/workflows/build-images.yml
+    secrets: inherit
+
+  # Create GitHub release
+  create-release:
+    runs-on: ubuntu-latest
+    needs: build-images
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREVIOUS_TAG=$(git describe --abbrev=0 --tags ${GITHUB_REF_NAME}^)
+          
+          # Generate changelog between tags
+          echo "## What's Changed" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          
+          # Get commits between tags with better formatting
+          git log --pretty=format:"- %s (%h)" ${PREVIOUS_TAG}..${GITHUB_REF_NAME} >> CHANGELOG.md
+          
+          echo "" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "## 🐳 Container Images" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "This release includes the following container images:" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "- \`ghcr.io/${{ github.repository }}/discovery:${GITHUB_REF_NAME#refs/tags/}\`" >> CHANGELOG.md
+          echo "- \`ghcr.io/${{ github.repository }}/management-ui:${GITHUB_REF_NAME#refs/tags/}\`" >> CHANGELOG.md
+          echo "- \`ghcr.io/${{ github.repository }}/health-monitor:${GITHUB_REF_NAME#refs/tags/}\`" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "## 🚀 Quick Start" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### Using Pre-built Images" >> CHANGELOG.md
+          echo "\`\`\`bash" >> CHANGELOG.md
+          echo "# Download the release" >> CHANGELOG.md
+          echo "curl -L https://github.com/${{ github.repository }}/archive/${GITHUB_REF_NAME}.tar.gz | tar -xz" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "# Set environment variables to use GHCR images" >> CHANGELOG.md
+          echo "export GITHUB_REPOSITORY=${{ github.repository }}" >> CHANGELOG.md
+          echo "export IMAGE_TAG=${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
+          echo "export DISCOVERY_IMAGE=ghcr.io/\${GITHUB_REPOSITORY}/discovery:\${IMAGE_TAG}" >> CHANGELOG.md
+          echo "export MANAGEMENT_UI_IMAGE=ghcr.io/\${GITHUB_REPOSITORY}/management-ui:\${IMAGE_TAG}" >> CHANGELOG.md
+          echo "export HEALTH_MONITOR_IMAGE=ghcr.io/\${GITHUB_REPOSITORY}/health-monitor:\${IMAGE_TAG}" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "# Start services" >> CHANGELOG.md
+          echo "task up" >> CHANGELOG.md
+          echo "\`\`\`" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### Using Production Compose" >> CHANGELOG.md
+          echo "\`\`\`bash" >> CHANGELOG.md
+          echo "GITHUB_REPOSITORY=${{ github.repository }} IMAGE_TAG=${GITHUB_REF_NAME#refs/tags/} docker compose -f docker-compose.prod.yml up -d" >> CHANGELOG.md
+          echo "\`\`\`" >> CHANGELOG.md
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+
+      - name: Update documentation
+        run: |
+          # Create installation instructions for this release
+          cat > INSTALL_${GITHUB_REF_NAME#refs/tags/}.md << EOF
+          # Installation Instructions for ${GITHUB_REF_NAME#refs/tags/}
+          
+          ## Quick Start with Pre-built Images
+          
+          \`\`\`bash
+          # Download the release
+          curl -L https://github.com/${{ github.repository }}/archive/${GITHUB_REF_NAME}.tar.gz | tar -xz
+          cd nats-home-automation-${GITHUB_REF_NAME#refs/tags/}
+          
+          # Use production compose with GHCR images
+          GITHUB_REPOSITORY=${{ github.repository }} IMAGE_TAG=${GITHUB_REF_NAME#refs/tags/} task up:prod
+          \`\`\`
+          
+          ## Available Images
+          
+          - \`ghcr.io/${{ github.repository }}/discovery:${GITHUB_REF_NAME#refs/tags/}\`
+          - \`ghcr.io/${{ github.repository }}/management-ui:${GITHUB_REF_NAME#refs/tags/}\`
+          - \`ghcr.io/${{ github.repository }}/health-monitor:${GITHUB_REF_NAME#refs/tags/}\`
+          
+          All images are multi-architecture (linux/amd64, linux/arm64).
+          EOF
+
+      - name: Upload installation instructions
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./INSTALL_${{ github.ref_name }}.md
+          asset_name: INSTALL_${{ github.ref_name }}.md
+          asset_content_type: text/markdown

@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"net/http"
-
-	"github.com/gorilla/mux"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 func (s *Server) setupRoutes() {
@@ -17,6 +19,7 @@ func (s *Server) setupRoutes() {
 
 	// Device endpoints
 	api.HandleFunc("/devices", s.handleGetDevices).Methods("GET")
+	api.HandleFunc("/devices", s.handleCreateDevice).Methods("POST")
 	api.HandleFunc("/devices/{id}", s.handleGetDevice).Methods("GET")
 	api.HandleFunc("/devices/{id}", s.handleUpdateDevice).Methods("PUT")
 	api.HandleFunc("/devices/{id}", s.handleDeleteDevice).Methods("DELETE")
@@ -70,8 +73,9 @@ func (s *Server) setupRoutes() {
 	// WebSocket endpoint
 	s.router.HandleFunc("/ws", s.handleWebSocket)
 
-	// Static files
-	s.router.PathPrefix("/").Handler(http.FileServer(http.Dir(s.config.HTTP.Static)))
+	// Static files with proper content types
+	fileServer := http.FileServer(http.Dir(s.config.HTTP.Static))
+	s.router.PathPrefix("/").Handler(s.staticFileHandler(fileServer))
 }
 
 // Middleware
@@ -107,8 +111,56 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// TODO: Implement proper authentication
-		// For now, just pass through
-		next.ServeHTTP(w, r)
+		// Get token from Authorization header
+		token := r.Header.Get("Authorization")
+		if token == "" || !strings.HasPrefix(token, "Bearer ") {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		sessionID := strings.TrimPrefix(token, "Bearer ")
+
+		// Look up session
+		s.mu.RLock()
+		session, exists := s.sessions[sessionID]
+		s.mu.RUnlock()
+
+		if !exists || session.ExpiresAt.Before(time.Now()) {
+			http.Error(w, "Invalid or expired session", http.StatusUnauthorized)
+			return
+		}
+
+		// Add session to request context
+		ctx := context.WithValue(r.Context(), "session", session)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (s *Server) staticFileHandler(fileServer http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set content type based on file extension
+		ext := filepath.Ext(r.URL.Path)
+		switch ext {
+		case ".js":
+			w.Header().Set("Content-Type", "application/javascript")
+		case ".css":
+			w.Header().Set("Content-Type", "text/css")
+		case ".html":
+			w.Header().Set("Content-Type", "text/html")
+		case ".json":
+			w.Header().Set("Content-Type", "application/json")
+		case ".png":
+			w.Header().Set("Content-Type", "image/png")
+		case ".jpg", ".jpeg":
+			w.Header().Set("Content-Type", "image/jpeg")
+		case ".svg":
+			w.Header().Set("Content-Type", "image/svg+xml")
+		case ".woff":
+			w.Header().Set("Content-Type", "font/woff")
+		case ".woff2":
+			w.Header().Set("Content-Type", "font/woff2")
+		}
+		
+		fileServer.ServeHTTP(w, r)
 	})
 }

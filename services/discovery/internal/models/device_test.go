@@ -21,8 +21,8 @@ func TestDevice_Validate(t *testing.T) {
 		{
 			name: "valid device",
 			device: models.Device{
-				ID:           "test-01",
-				Type:         "sensor",
+				DeviceID:     "test-01",
+				DeviceType:   "sensor",
 				Name:         "Test Sensor",
 				Manufacturer: "Test Inc",
 				Model:        "TS-001",
@@ -30,41 +30,30 @@ func TestDevice_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "missing ID",
+			name: "missing device_id",
 			device: models.Device{
-				Type: "sensor",
-				Name: "Test Sensor",
+				DeviceType: "sensor",
+				Name:       "Test Sensor",
 			},
 			wantErr: true,
-			errMsg:  "device ID is required",
+			errMsg:  "device_id is required",
 		},
 		{
-			name: "missing type",
+			name: "missing device_type",
 			device: models.Device{
-				ID:   "test-02",
-				Name: "Test Device",
+				DeviceID: "test-02",
+				Name:     "Test Device",
 			},
 			wantErr: true,
-			errMsg:  "device type is required",
+			errMsg:  "device_type is required",
 		},
 		{
-			name: "missing name",
+			name: "name defaults to device_id",
 			device: models.Device{
-				ID:   "test-03",
-				Type: "switch",
+				DeviceID:   "test-03",
+				DeviceType: "switch",
 			},
-			wantErr: true,
-			errMsg:  "device name is required",
-		},
-		{
-			name: "invalid type",
-			device: models.Device{
-				ID:   "test-04",
-				Type: "invalid_type",
-				Name: "Test Device",
-			},
-			wantErr: true,
-			errMsg:  "invalid device type",
+			wantErr: false,
 		},
 	}
 
@@ -76,6 +65,10 @@ func TestDevice_Validate(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
 				assert.NoError(t, err)
+				// Check name defaulting
+				if tt.name == "name defaults to device_id" {
+					assert.Equal(t, tt.device.DeviceID, tt.device.Name)
+				}
 			}
 		})
 	}
@@ -83,86 +76,68 @@ func TestDevice_Validate(t *testing.T) {
 
 func TestDevice_UpdateStatus(t *testing.T) {
 	device := models.Device{
-		ID:     "test-01",
-		Type:   "sensor",
-		Name:   "Test Sensor",
-		Status: models.DeviceStatusOffline,
+		DeviceID:   "test-01",
+		DeviceType: "sensor",
+		Name:       "Test Sensor",
 	}
 
 	// Test updating to online
-	device.UpdateStatus(models.DeviceStatusOnline)
-	assert.Equal(t, models.DeviceStatusOnline, device.Status)
-	assert.NotNil(t, device.LastSeen)
-	assert.WithinDuration(t, time.Now(), *device.LastSeen, time.Second)
+	beforeUpdate := time.Now()
+	device.UpdateStatus(true)
+	assert.True(t, device.Status.Online)
+	assert.WithinDuration(t, beforeUpdate, device.Status.LastSeen, time.Second)
 
 	// Test updating to offline
-	device.UpdateStatus(models.DeviceStatusOffline)
-	assert.Equal(t, models.DeviceStatusOffline, device.Status)
+	device.UpdateStatus(false)
+	assert.False(t, device.Status.Online)
+	assert.WithinDuration(t, time.Now(), device.Status.LastSeen, time.Second)
 }
 
-func TestDevice_SetCapabilities(t *testing.T) {
+func TestDevice_Capabilities(t *testing.T) {
 	device := models.Device{
-		ID:   "test-01",
-		Type: "sensor",
-		Name: "Test Sensor",
-	}
-
-	capabilities := map[string]interface{}{
-		"sensors": []string{"temperature", "humidity"},
-		"units": map[string]string{
-			"temperature": "°C",
-			"humidity":    "%",
+		DeviceID:   "test-01",
+		DeviceType: "sensor",
+		Name:       "Test Sensor",
+		Capabilities: models.DeviceCapabilities{
+			Sensors:   []string{"temperature", "humidity"},
+			Actuators: []string{"led"},
+			Units: map[string]string{
+				"temperature": "°C",
+				"humidity":    "%",
+			},
 		},
 	}
 
-	err := device.SetCapabilities(capabilities)
+	// Test JSON marshaling
+	data, err := json.Marshal(device.Capabilities)
 	require.NoError(t, err)
-	assert.NotNil(t, device.Capabilities)
 
-	// Verify capabilities were stored correctly
-	var stored map[string]interface{}
-	err = json.Unmarshal(device.Capabilities, &stored)
+	var caps models.DeviceCapabilities
+	err = json.Unmarshal(data, &caps)
 	require.NoError(t, err)
-	assert.Equal(t, capabilities, stored)
+	assert.Equal(t, device.Capabilities, caps)
 }
 
-func TestDevice_GetCapabilities(t *testing.T) {
-	capabilities := map[string]interface{}{
-		"commands": []string{"on", "off", "toggle"},
-		"features": []string{"timer", "dimming"},
-	}
-
-	capData, _ := json.Marshal(capabilities)
-	device := models.Device{
-		ID:           "test-01",
-		Type:         "switch",
-		Name:         "Test Switch",
-		Capabilities: capData,
-	}
-
-	result, err := device.GetCapabilities()
-	require.NoError(t, err)
-	assert.Equal(t, capabilities, result)
-}
-
-func TestDevice_MarshalJSON(t *testing.T) {
+func TestDevice_ToJSON(t *testing.T) {
 	now := time.Now()
 	device := models.Device{
-		ID:           "test-01",
-		Type:         "sensor",
+		DeviceID:     "test-01",
+		DeviceType:   "sensor",
 		Name:         "Test Sensor",
 		Manufacturer: "Test Inc",
 		Model:        "TS-001",
-		Version:      "1.0.0",
-		Status:       models.DeviceStatusOnline,
-		LastSeen:     &now,
-		Capabilities: json.RawMessage(`{"sensors":["temperature"]}`),
-		Config:       json.RawMessage(`{"update_interval":30}`),
-		CreatedAt:    now.Add(-time.Hour),
-		UpdatedAt:    now,
+		Status: models.DeviceStatus{
+			Online:       true,
+			LastSeen:     now,
+			RegisteredAt: now.Add(-time.Hour),
+			Version:      "1.0.0",
+		},
+		Capabilities: models.DeviceCapabilities{
+			Sensors: []string{"temperature"},
+		},
 	}
 
-	data, err := json.Marshal(device)
+	data, err := device.ToJSON()
 	require.NoError(t, err)
 
 	// Unmarshal to verify
@@ -170,83 +145,128 @@ func TestDevice_MarshalJSON(t *testing.T) {
 	err = json.Unmarshal(data, &result)
 	require.NoError(t, err)
 
-	assert.Equal(t, "test-01", result["id"])
-	assert.Equal(t, "sensor", result["type"])
+	assert.Equal(t, "test-01", result["device_id"])
+	assert.Equal(t, "sensor", result["device_type"])
 	assert.Equal(t, "Test Sensor", result["name"])
 	assert.Equal(t, "Test Inc", result["manufacturer"])
 	assert.Equal(t, "TS-001", result["model"])
-	assert.Equal(t, "1.0.0", result["version"])
-	assert.Equal(t, "online", result["status"])
-	assert.NotNil(t, result["last_seen"])
-	assert.NotNil(t, result["capabilities"])
-	assert.NotNil(t, result["config"])
+	
+	status := result["status"].(map[string]interface{})
+	assert.Equal(t, true, status["online"])
+	assert.NotNil(t, status["last_seen"])
 }
 
-func TestDevice_UnmarshalJSON(t *testing.T) {
+func TestDevice_FromJSON(t *testing.T) {
 	jsonData := `{
-		"id": "test-01",
-		"type": "switch",
+		"device_id": "test-01",
+		"device_type": "switch",
 		"name": "Test Switch",
 		"manufacturer": "Test Inc",
 		"model": "SW-001",
-		"version": "2.0.0",
-		"status": "online",
-		"capabilities": {"commands": ["on", "off"]},
-		"config": {"default_state": "off"}
+		"status": {
+			"online": true,
+			"version": "2.0.0"
+		},
+		"capabilities": {
+			"actuators": ["relay"],
+			"features": {"timer": true}
+		},
+		"topics": {
+			"state": "home.devices.switch.test-01.state",
+			"command": "home.devices.switch.test-01.command"
+		}
 	}`
 
-	var device models.Device
-	err := json.Unmarshal([]byte(jsonData), &device)
+	device, err := models.FromJSON([]byte(jsonData))
 	require.NoError(t, err)
 
-	assert.Equal(t, "test-01", device.ID)
-	assert.Equal(t, "switch", device.Type)
+	assert.Equal(t, "test-01", device.DeviceID)
+	assert.Equal(t, "switch", device.DeviceType)
 	assert.Equal(t, "Test Switch", device.Name)
 	assert.Equal(t, "Test Inc", device.Manufacturer)
 	assert.Equal(t, "SW-001", device.Model)
-	assert.Equal(t, "2.0.0", device.Version)
-	assert.Equal(t, models.DeviceStatusOnline, device.Status)
-	assert.NotNil(t, device.Capabilities)
-	assert.NotNil(t, device.Config)
+	assert.True(t, device.Status.Online)
+	assert.Equal(t, "2.0.0", device.Status.Version)
+	assert.Equal(t, []string{"relay"}, device.Capabilities.Actuators)
+	assert.Equal(t, "home.devices.switch.test-01.state", device.Topics.State)
+	assert.Equal(t, "home.devices.switch.test-01.command", device.Topics.Command)
 }
 
-func TestDeviceStatus_String(t *testing.T) {
-	tests := []struct {
-		status models.DeviceStatus
-		want   string
-	}{
-		{models.DeviceStatusOnline, "online"},
-		{models.DeviceStatusOffline, "offline"},
-		{models.DeviceStatusUnknown, "unknown"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.want, func(t *testing.T) {
-			assert.Equal(t, tt.want, tt.status.String())
-		})
-	}
-}
-
-func TestDevice_IsValidType(t *testing.T) {
-	validTypes := []string{
-		"sensor", "binary_sensor", "switch", "light",
-		"climate", "cover", "fan", "lock",
-	}
-
-	for _, deviceType := range validTypes {
-		device := models.Device{
-			ID:   "test",
-			Type: deviceType,
-			Name: "Test",
-		}
-		assert.NoError(t, device.Validate(), "Type %s should be valid", deviceType)
-	}
-
-	// Test invalid type
+func TestDeviceAnnouncement(t *testing.T) {
 	device := models.Device{
-		ID:   "test",
-		Type: "invalid_type",
-		Name: "Test",
+		DeviceID:   "test-01",
+		DeviceType: "sensor",
+		Name:       "Test Sensor",
 	}
-	assert.Error(t, device.Validate())
+
+	announcement := models.DeviceAnnouncement{
+		Device:      device,
+		AnnouncedAt: time.Now(),
+	}
+
+	data, err := json.Marshal(announcement)
+	require.NoError(t, err)
+
+	var result models.DeviceAnnouncement
+	err = json.Unmarshal(data, &result)
+	require.NoError(t, err)
+
+	assert.Equal(t, announcement.DeviceID, result.DeviceID)
+	assert.WithinDuration(t, announcement.AnnouncedAt, result.AnnouncedAt, time.Second)
+}
+
+func TestDeviceCommand(t *testing.T) {
+	cmd := models.DeviceCommand{
+		Command: "set_brightness",
+		Parameters: map[string]interface{}{
+			"brightness": 75,
+			"transition": 1000,
+		},
+		RequestID: "req-123",
+		Timestamp: time.Now(),
+	}
+
+	data, err := json.Marshal(cmd)
+	require.NoError(t, err)
+
+	var result models.DeviceCommand
+	err = json.Unmarshal(data, &result)
+	require.NoError(t, err)
+
+	assert.Equal(t, cmd.Command, result.Command)
+	assert.Equal(t, cmd.RequestID, result.RequestID)
+	assert.Equal(t, 75, int(result.Parameters["brightness"].(float64)))
+}
+
+func TestDiagnostics(t *testing.T) {
+	battery := 85
+	rssi := -65
+	uptime := int64(3600)
+	freeMemory := 1024
+	temp := 25.5
+
+	diag := models.Diagnostics{
+		Battery:      &battery,
+		RSSI:         &rssi,
+		Uptime:       &uptime,
+		FreeMemory:   &freeMemory,
+		Temperature:  &temp,
+		ErrorCount:   5,
+		RestartCount: 2,
+	}
+
+	data, err := json.Marshal(diag)
+	require.NoError(t, err)
+
+	var result models.Diagnostics
+	err = json.Unmarshal(data, &result)
+	require.NoError(t, err)
+
+	assert.Equal(t, battery, *result.Battery)
+	assert.Equal(t, rssi, *result.RSSI)
+	assert.Equal(t, uptime, *result.Uptime)
+	assert.Equal(t, freeMemory, *result.FreeMemory)
+	assert.Equal(t, temp, *result.Temperature)
+	assert.Equal(t, 5, result.ErrorCount)
+	assert.Equal(t, 2, result.RestartCount)
 }

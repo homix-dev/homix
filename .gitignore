@@ -109,3 +109,9 @@ Thumbs.db
 .claude
 data
 .task
+
+# Docker Compose generated directories
+homeassistant-config/
+zigbee2mqtt-data/
+mosquitto-data/
+mosquitto-log/

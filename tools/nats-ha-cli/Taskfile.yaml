@@ -13,15 +13,19 @@ vars:
 tasks:
   build:
     desc: Build CLI tool
-    dir: tools/nats-ha-cli
-    sources:
-      - '**/*.go'
-      - go.mod
-      - go.sum
-    generates:
-      - bin/{{.APP_NAME}}
     cmds:
-      - go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}} .
+      - |
+        # Determine the correct directory
+        if [ -f "go.mod" ]; then
+          # We're already in the right directory
+          go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}} .
+        elif [ -f "tools/nats-ha-cli/go.mod" ]; then
+          # We're in the root directory
+          cd tools/nats-ha-cli && go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}} .
+        else
+          echo "Error: Cannot find go.mod file"
+          exit 1
+        fi
 
   build-all:
     desc: Build for all platforms
@@ -36,7 +40,15 @@ tasks:
       GOOS: linux
       GOARCH: amd64
     cmds:
-      - GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}} .
+      - |
+        if [ -f "go.mod" ]; then
+          GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}} .
+        elif [ -f "tools/nats-ha-cli/go.mod" ]; then
+          cd tools/nats-ha-cli && GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}} .
+        else
+          echo "Error: Cannot find go.mod file"
+          exit 1
+        fi
 
   build-darwin:
     desc: Build for macOS
@@ -44,8 +56,17 @@ tasks:
       GOOS: darwin
       GOARCH: amd64
     cmds:
-      - GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}} .
-      - GOOS={{.GOOS}} GOARCH=arm64 go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-arm64 .
+      - |
+        if [ -f "go.mod" ]; then
+          GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}} .
+          GOOS={{.GOOS}} GOARCH=arm64 go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-arm64 .
+        elif [ -f "tools/nats-ha-cli/go.mod" ]; then
+          cd tools/nats-ha-cli && GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}} .
+          cd tools/nats-ha-cli && GOOS={{.GOOS}} GOARCH=arm64 go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-arm64 .
+        else
+          echo "Error: Cannot find go.mod file"
+          exit 1
+        fi
 
   build-windows:
     desc: Build for Windows
@@ -53,28 +74,78 @@ tasks:
       GOOS: windows
       GOARCH: amd64
     cmds:
-      - GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}}.exe .
+      - |
+        if [ -f "go.mod" ]; then
+          GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}}.exe .
+        elif [ -f "tools/nats-ha-cli/go.mod" ]; then
+          cd tools/nats-ha-cli && GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -ldflags="{{.LDFLAGS}}" -o bin/{{.APP_NAME}}-{{.GOOS}}-{{.GOARCH}}.exe .
+        else
+          echo "Error: Cannot find go.mod file"
+          exit 1
+        fi
 
   run:
     desc: Run CLI
     deps: [build]
+    vars:
+      NATS_USER: '{{default "home" .NATS_USER}}'
+      NATS_PASSWORD: '{{default "changeme" .NATS_PASSWORD}}'
+      NATS_SERVER: '{{default "nats://localhost:4222" .NATS_SERVER}}'
     cmds:
-      - ./bin/{{.APP_NAME}} {{.CLI_ARGS}}
+      - |
+        # Add authentication if not already provided in CLI_ARGS
+        AUTH_ARGS=""
+        if [[ ! "{{.CLI_ARGS}}" =~ "--user" ]]; then
+          AUTH_ARGS="$AUTH_ARGS --user {{.NATS_USER}}"
+        fi
+        if [[ ! "{{.CLI_ARGS}}" =~ "--password" ]]; then
+          AUTH_ARGS="$AUTH_ARGS --password {{.NATS_PASSWORD}}"
+        fi
+        if [[ ! "{{.CLI_ARGS}}" =~ "--server" ]]; then
+          AUTH_ARGS="$AUTH_ARGS --server {{.NATS_SERVER}}"
+        fi
+        
+        if [ -f "bin/{{.APP_NAME}}" ]; then
+          ./bin/{{.APP_NAME}} $AUTH_ARGS {{.CLI_ARGS}}
+        elif [ -f "tools/nats-ha-cli/bin/{{.APP_NAME}}" ]; then
+          ./tools/nats-ha-cli/bin/{{.APP_NAME}} $AUTH_ARGS {{.CLI_ARGS}}
+        else
+          echo "Error: Binary not found. Run 'task build' first."
+          exit 1
+        fi
 
   run-tui:
     desc: Run TUI interface
     deps: [build]
+    vars:
+      NATS_USER: '{{default "home" .NATS_USER}}'
+      NATS_PASSWORD: '{{default "changeme" .NATS_PASSWORD}}'
+      NATS_SERVER: '{{default "nats://localhost:4222" .NATS_SERVER}}'
     cmds:
-      - ./bin/{{.APP_NAME}} tui
+      - |
+        if [ -f "bin/{{.APP_NAME}}" ]; then
+          ./bin/{{.APP_NAME}} tui --user {{.NATS_USER}} --password {{.NATS_PASSWORD}} --server {{.NATS_SERVER}}
+        elif [ -f "tools/nats-ha-cli/bin/{{.APP_NAME}}" ]; then
+          ./tools/nats-ha-cli/bin/{{.APP_NAME}} tui --user {{.NATS_USER}} --password {{.NATS_PASSWORD}} --server {{.NATS_SERVER}}
+        else
+          echo "Error: Binary not found. Run 'task build' first."
+          exit 1
+        fi
 
   install:
     desc: Install CLI to /usr/local/bin
     deps: [build]
-    dir: tools/nats-ha-cli
     cmds:
       - |
         echo "Installing {{.APP_NAME}} to /usr/local/bin..."
-        sudo cp bin/{{.APP_NAME}} /usr/local/bin/
+        if [ -f "bin/{{.APP_NAME}}" ]; then
+          sudo cp bin/{{.APP_NAME}} /usr/local/bin/
+        elif [ -f "tools/nats-ha-cli/bin/{{.APP_NAME}}" ]; then
+          sudo cp tools/nats-ha-cli/bin/{{.APP_NAME}} /usr/local/bin/
+        else
+          echo "Error: Binary not found. Run 'task build' first."
+          exit 1
+        fi
         sudo chmod +x /usr/local/bin/{{.APP_NAME}}
         echo "✅ Installed {{.APP_NAME}} to /usr/local/bin/"
         echo "You can now run: {{.APP_NAME}}"
@@ -96,10 +167,18 @@ tasks:
 
   test:
     desc: Run tests
-    dir: tools/nats-ha-cli
     cmds:
-      - go test -v -race -coverprofile=coverage.out ./...
-      - go tool cover -html=coverage.out -o coverage.html
+      - |
+        if [ -f "go.mod" ]; then
+          go test -v -race -coverprofile=coverage.out ./...
+          go tool cover -html=coverage.out -o coverage.html
+        elif [ -f "tools/nats-ha-cli/go.mod" ]; then
+          cd tools/nats-ha-cli && go test -v -race -coverprofile=coverage.out ./...
+          cd tools/nats-ha-cli && go tool cover -html=coverage.out -o coverage.html
+        else
+          echo "Error: Cannot find go.mod file"
+          exit 1
+        fi
 
   test-integration:
     desc: Run integration tests

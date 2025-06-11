@@ -58,6 +58,7 @@ type Condition struct {
 type Action struct {
 	Type       string                 `json:"type"` // device_action, scene, notification, delay, script
 	DeviceID   string                 `json:"device_id,omitempty"`
+	Command    string                 `json:"command,omitempty"`
 	Service    string                 `json:"service,omitempty"`
 	Data       map[string]interface{} `json:"data,omitempty"`
 	Additional map[string]interface{} `json:"additional,omitempty"`
@@ -89,6 +90,31 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	LastLogin time.Time `json:"last_login"`
+}
+
+// Session represents a user session
+type Session struct {
+	ID           string    `json:"id"`
+	UserID       string    `json:"user_id"`
+	Username     string    `json:"username"`
+	NATSUser     string    `json:"-"` // Don't expose in JSON
+	NATSPassword string    `json:"-"` // Don't expose in JSON
+	CreatedAt    time.Time `json:"created_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
+// LoginRequest represents a login request
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// LoginResponse represents a login response
+type LoginResponse struct {
+	Success bool   `json:"success"`
+	Token   string `json:"token,omitempty"`
+	User    *User  `json:"user,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 // Event represents a system event

@@ -1,8 +1,8 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
 # Install dependencies
-RUN apk add --no-cache git
+RUN apk add --no-cache git ca-certificates
 
 # Set working directory
 WORKDIR /app

@@ -4,6 +4,7 @@ vars:
   NATS_SERVER: "nats://localhost:4222"
   NATS_USER: "home"
   NATS_PASS: "changeme"
+  CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
 
 includes:
   services: ./services/Taskfile.yaml
@@ -18,299 +19,296 @@ tasks:
     cmds:
       - task --list
 
+  # === SETUP TASKS ===
   setup:
-    desc: Initial project setup
+    desc: Complete project setup with all dependencies
     cmds:
       - task: infra:setup
-      - task: install-deps
-      - echo "Setup complete! Run 'task infra:start-dev' to start NATS in development mode"
-      - echo "Or 'task infra:start' for production mode with Synadia Cloud"
-
-  setup-dev:
-    desc: Setup and start in development mode
-    cmds:
-      - task: infra:setup
-      - task: install-deps
-      - task: infra:start-dev
-      - echo "Development setup complete! NATS server running on localhost:4222"
-
-  setup-minimal:
-    desc: Minimal setup - just NATS infrastructure
-    cmds:
-      - task: infra:setup
-      - task: infra:start-dev
+      - task: deps
       - |
-        echo "Minimal setup complete! NATS server running on localhost:4222"
-        echo "Connection details: nats://home:changeme@localhost:4222"
+        echo "✅ Setup complete!"
         echo ""
-        echo "To install additional dependencies later:"
-        echo "  - NATS CLI: go install github.com/nats-io/natscli/nats@latest"
-        echo "  - Python deps: pip3 install nats-py"
-        echo "  - ESPHome: pip3 install esphome"
+        echo "Quick start options:"
+        echo "  - 'task dev' - Start ALL services in tmux (recommended!)"
+        echo "  - 'task up' - Start with Docker Compose"
+        echo "  - 'task start' - Start NATS only + show manual instructions"
 
-  install-deps:
+  deps:
     desc: Install all project dependencies
     cmds:
-      - echo "Installing NATS CLI..."
-      - go install github.com/nats-io/natscli/nats@latest || echo "Warning - Failed to install NATS CLI. Please install Go first."
-      - echo "Installing Go dependencies..."
-      - cd services/discovery && go mod download || echo "Warning - Failed to download Go dependencies"
-      - cd tools/nats-ha-cli && go mod download || echo "Warning - Failed to download Go dependencies"
-      - task: install-python-deps
+      - echo "Installing dependencies..."
+      - go install github.com/nats-io/natscli/nats@latest || echo "⚠️  Failed to install NATS CLI (Go required)"
+      - cd services/discovery && go mod download || echo "⚠️  Failed to download Go dependencies"
+      - cd services/management-ui && go mod download || echo "⚠️  Failed to download Go dependencies"
+      - cd services/health-monitor && go mod download || echo "⚠️  Failed to download Go dependencies"
+      - echo "✅ Dependencies installed"
 
+  # === START/STOP TASKS ===
   start:
-    desc: Start all services
+    desc: Start NATS server and show instructions for starting other services
     cmds:
       - task: infra:start-dev
-      - task: services:discovery:run
-
-  dev:
-    desc: Run in development mode with all services
-    cmds:
-      - task: infra:start-dev
-      - echo "Starting discovery service..."
-      - task: services:discovery:run
-
-  start-prod:
-    desc: Start all services in production mode
-    cmds:
-      - task: infra:start
-      - task: services:discovery:run
+      - |
+        echo ""
+        echo "🚀 NATS is running!"
+        echo ""
+        echo "To start all services, run these commands in separate terminals:"
+        echo ""
+        echo "Terminal 1 - Discovery Service:"
+        echo "  cd services/discovery && go run main.go"
+        echo ""
+        echo "Terminal 2 - Health Monitor:"
+        echo "  cd services/health-monitor && go run main.go"
+        echo ""
+        echo "Terminal 3 - Management UI:"
+        echo "  cd services/management-ui && go run main.go"
+        echo ""
+        echo "Or use one of these alternatives:"
+        echo "  • 'task dev' - Run all in tmux (recommended)"
+        echo "  • 'task up' - Run with Docker Compose"
+        echo ""
+        echo "Services will be available at:"
+        echo "  • Management UI: http://localhost:8081 (admin/admin)"
+        echo "  • Health Monitor: http://localhost:8082"
+        echo "  • NATS Monitor: http://localhost:8222"
 
   stop:
     desc: Stop all services
     cmds:
+      - pkill -f "go run main.go" || echo "No Go services running"
       - task: infra:stop
+      - '{{.CONTAINER_TOOL}} compose down 2>/dev/null || true'
+      - echo "✅ All services stopped"
 
+  dev:
+    desc: Start ALL services in tmux sessions (recommended - one command setup!)
+    cmds:
+      - task: infra:start-dev
+      - |
+        if ! command -v tmux &> /dev/null; then
+          echo "❌ tmux not installed. Install with:"
+          echo "  macOS: brew install tmux"
+          echo "  Ubuntu: sudo apt install tmux"
+          exit 1
+        fi
+        
+        # Kill any existing session
+        tmux kill-session -t nats-ha 2>/dev/null || true
+        
+        # Create new session
+        tmux new-session -d -s nats-ha -n discovery
+        tmux send-keys -t nats-ha:discovery "cd services/discovery && go run main.go" C-m
+        
+        tmux new-window -t nats-ha -n health-monitor
+        tmux send-keys -t nats-ha:health-monitor "cd services/health-monitor && go run main.go" C-m
+        
+        tmux new-window -t nats-ha -n management-ui
+        tmux send-keys -t nats-ha:management-ui "cd services/management-ui && go run main.go" C-m
+        
+        echo "🚀 All services started in tmux session 'nats-ha'"
+        echo ""
+        echo "Available at:"
+        echo "  • Management UI: http://localhost:8081 (admin/admin)"
+        echo "  • Health Monitor: http://localhost:8082"
+        echo "  • NATS Monitor: http://localhost:8222"
+        echo ""
+        echo "To attach to session: tmux attach -t nats-ha"
+        echo "To switch windows: Ctrl+b then 0/1/2"
+        echo "To detach: Ctrl+b then d"
+
+  # === DOCKER COMPOSE TASKS ===
+  up:
+    desc: Start all services with Docker Compose
+    cmds:
+      - |
+        if [ ! -f .env ]; then
+          cp .env.example .env
+          echo "Created .env file from template"
+        fi
+      - '{{.CONTAINER_TOOL}} compose up -d'
+      - |
+        echo "🚀 Services starting with Docker Compose..."
+        echo ""
+        echo "Available at:"
+        echo "  • Management UI: http://localhost:8081 (admin/admin)"
+        echo "  • Health Monitor: http://localhost:8082"
+        echo "  • NATS Monitor: http://localhost:8222"
+        echo ""
+        echo "View logs: task logs"
+        echo "Stop services: task down"
+
+  up:full:
+    desc: Start all services including Home Assistant
+    cmds:
+      - |
+        if [ ! -f .env ]; then
+          cp .env.example .env
+        fi
+        mkdir -p homeassistant-config
+      - '{{.CONTAINER_TOOL}} compose -f docker-compose.full.yml up -d'
+      - |
+        echo "🚀 Full stack starting..."
+        echo ""
+        echo "Available at:"
+        echo "  • Home Assistant: http://localhost:8123"
+        echo "  • Management UI: http://localhost:8081 (admin/admin)"
+        echo "  • Health Monitor: http://localhost:8082"
+        echo "  • NATS Monitor: http://localhost:8222"
+
+  up:prod:
+    desc: Start services using pre-built GHCR images
+    cmds:
+      - |
+        if [ ! -f .env ]; then
+          cp .env.example .env
+          echo "Created .env file from template"
+        fi
+      - '{{.CONTAINER_TOOL}} compose -f docker-compose.prod.yml up -d'
+      - |
+        echo "🚀 Production services starting with GHCR images..."
+        echo ""
+        echo "Available at:"
+        echo "  • Management UI: http://localhost:8081 (admin/admin)"
+        echo "  • Health Monitor: http://localhost:8082"
+        echo "  • NATS Monitor: http://localhost:8222"
+        echo ""
+        echo "Using images from: ghcr.io/$${GITHUB_REPOSITORY:-calmera/nats-home-automation}"
+
+  down:
+    desc: Stop Docker Compose services
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose down'
+      - '{{.CONTAINER_TOOL}} compose -f docker-compose.full.yml down 2>/dev/null || true'
+
+  logs:
+    desc: View Docker Compose logs
+    cmds:
+      - '{{.CONTAINER_TOOL}} compose logs -f {{.CLI_ARGS}}'
 
   build:
-    desc: Build all components
+    desc: Build all Docker images
     cmds:
-      - task: services:build
-      - task: tools:build
-      - task: bridges:build
+      - '{{.CONTAINER_TOOL}} compose build'
 
-  clean:
-    desc: Clean all build artifacts
+  # === MONITORING TASKS ===
+  monitor:
+    desc: Monitor all NATS subjects
     cmds:
-      - task: services:clean
-      - task: tools:clean
-      - task: bridges:clean
-      - find . -name "*.pyc" -delete
-      - find . -name "__pycache__" -type d -exec rm -rf {} +
-      - find . -name ".esphome" -type d -exec rm -rf {} +
+      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} sub "home.>"
 
-  clean-all:
-    desc: Deep clean - remove all artifacts, logs, and generated files
+  monitor:devices:
+    desc: Monitor device states and events
     cmds:
-      - task: clean
-      - find . -name "*.log" -type f -delete
-      - find . -name "coverage.out" -type f -delete
-      - find . -name "coverage.html" -type f -delete
-      - find . -name "*.tmp" -type f -delete
-      - find . -name "*.bak" -type f -delete
-      - find . -name ".task" -type d -exec rm -rf {} +
-      - rm -rf infrastructure/data/nats-server.log
-      - rm -rf infrastructure/nats-data
-      - echo "[OK] Deep clean complete"
+      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} sub "home.devices.>"
 
-  lint:
-    desc: Run linters for all components
+  status:
+    desc: Check status of all services
     cmds:
-      - task: services:lint
-      - task: tools:lint
-      - task: esphome:lint
+      - |
+        echo "=== NATS Status ==="
+        nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} server check connection 2>/dev/null && echo "✅ NATS: Connected" || echo "❌ NATS: Not available"
+        
+        echo ""
+        echo "=== Web Services ==="
+        curl -s http://localhost:8081 >/dev/null 2>&1 && echo "✅ Management UI: http://localhost:8081" || echo "❌ Management UI: Not available"
+        curl -s http://localhost:8082 >/dev/null 2>&1 && echo "✅ Health Monitor: http://localhost:8082" || echo "❌ Health Monitor: Not available"
+        curl -s http://localhost:8222/healthz >/dev/null 2>&1 && echo "✅ NATS Monitor: http://localhost:8222" || echo "❌ NATS Monitor: Not available"
+        
+        echo ""
+        echo "=== Containers ==="
+        {{.CONTAINER_TOOL}} ps --format "table {{.Names}}\t{{.Status}}" | grep -E "(nats|home)" || echo "No containers running"
 
-  format:
-    desc: Format all code
-    cmds:
-      - task: services:format
-      - task: tools:format
-
+  # === TESTING TASKS ===
   test:
     desc: Run all tests
-    deps: [check-deps]
     cmds:
       - cd tests && task default
 
-  test:unit:
-    desc: Run unit tests only
+  test:connection:
+    desc: Test NATS connection and messaging
+    vars:
+      NATS_CMD: 'nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}}'
     cmds:
-      - cd tests && task unit
+      - echo "Testing NATS connection..."
+      - '{{.NATS_CMD}} server check connection'
+      - echo "Testing publish/subscribe..."
+      - 'echo "test message" | {{.NATS_CMD}} pub home.test.message'
+      - echo "✅ NATS connection test passed"
 
-  test:integration:
-    desc: Run integration tests
+  # === CONTAINER TASKS ===
+  build-images:
+    desc: Build container images locally
+    vars:
+      SERVICES: '{{default "discovery,management-ui,health-monitor" .SERVICES}}'
+      REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
+      IMAGE_PREFIX: '{{default "calmera/nats-home-automation" .IMAGE_PREFIX}}'
     cmds:
-      - echo "Starting NATS for integration tests..."
-      - task: infra:start-dev
-      - sleep 2
-      - cd tests && task integration
+      - |
+        echo "Building container images..."
+        # Use a portable approach for parsing comma-separated values
+        echo "{{.SERVICES}}" | tr ',' '\n' | while read service; do
+          echo "Building $service..."
+          {{.CONTAINER_TOOL}} build -t {{.REGISTRY}}/{{.IMAGE_PREFIX}}/$service:latest ./services/$service
+        done
+        echo "✅ Images built successfully"
 
-  test:watch:
-    desc: Watch for changes and run tests
+  push-images:
+    desc: Push container images to registry (requires login)
+    vars:
+      SERVICES: '{{default "discovery,management-ui,health-monitor" .SERVICES}}'
+      REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
+      IMAGE_PREFIX: '{{default "calmera/nats-home-automation" .IMAGE_PREFIX}}'
+      TAG: '{{default "latest" .TAG}}'
     cmds:
-      - cd tests && task watch
+      - |
+        echo "Pushing container images to {{.REGISTRY}}..."
+        # Use a portable approach for parsing comma-separated values
+        echo "{{.SERVICES}}" | tr ',' '\n' | while read service; do
+          echo "Pushing $service..."
+          {{.CONTAINER_TOOL}} tag {{.REGISTRY}}/{{.IMAGE_PREFIX}}/$service:latest {{.REGISTRY}}/{{.IMAGE_PREFIX}}/$service:{{.TAG}}
+          {{.CONTAINER_TOOL}} push {{.REGISTRY}}/{{.IMAGE_PREFIX}}/$service:{{.TAG}}
+          if [ "{{.TAG}}" != "latest" ]; then
+            {{.CONTAINER_TOOL}} push {{.REGISTRY}}/{{.IMAGE_PREFIX}}/$service:latest
+          fi
+        done
+        echo "✅ Images pushed successfully"
 
-  test:setup:
-    desc: Setup test environment
+  registry-login:
+    desc: Login to GitHub Container Registry
     cmds:
-      - cd tests && task setup
+      - |
+        echo "Logging into GitHub Container Registry..."
+        echo "Please provide your GitHub token when prompted"
+        {{.CONTAINER_TOOL}} login ghcr.io -u {{.CLI_ARGS}}
 
-  # Development helpers
-  nats-cli:
+  # === UTILITY TASKS ===
+  clean:
+    desc: Clean all build artifacts and logs
+    cmds:
+      - task: services:clean
+      - task: tools:clean
+      - find . -name "*.log" -type f -delete
+      - find . -name "coverage.*" -type f -delete
+      - find . -name ".task" -type d -exec rm -rf {} + 2>/dev/null || true
+      - echo "✅ Cleanup complete"
+
+  nats:
     desc: Open NATS CLI with project credentials
     cmds:
       - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} {{.CLI_ARGS}}
 
-  monitor:
-    desc: Monitor NATS subjects
+  # Legacy aliases for compatibility
+  start-prod:
+    desc: "Alias for 'task start'"
     cmds:
-      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} sub "home.>"
+      - task: start
 
-  monitor-discovery:
-    desc: Monitor device discovery
+  compose:up:
+    desc: "Alias for 'task up'"
     cmds:
-      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} sub "home.discovery.>"
+      - task: up
 
-  monitor-devices:
-    desc: Monitor device states
+  compose:down:
+    desc: "Alias for 'task down'"
     cmds:
-      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} sub "home.devices.>"
-
-  announce-test:
-    desc: Send test device announcement
-    cmds:
-      - |
-        echo '{"device_id":"test-device","device_type":"sensor","device_name":"Test Device","status":"online"}' | \
-        nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} pub home.discovery.announce
-
-  kv-list:
-    desc: List all KV buckets
-    cmds:
-      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} kv ls
-
-  devices-list:
-    desc: List registered devices
-    cmds:
-      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} kv get devices --all
-
-  config-list:
-    desc: List device configurations
-    cmds:
-      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} kv get device-configs --all
-
-  validate:
-    desc: Validate all task files
-    cmds:
-      - echo "Validating Taskfiles..."
-      - task --list-all > /dev/null && echo "✅ All Taskfiles are valid" || echo "❌ Taskfile validation failed"
-
-  test-nats:
-    desc: Test NATS messaging
-    vars:
-      NATS_CMD: 'nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}}'
-    cmds:
-      - echo "Testing NATS messaging..."
-      - echo "Publishing test message..."
-      - '{{.NATS_CMD}} pub home.test.message "Hello NATS"'
-      - echo "Test complete - check 'task monitor' output to see the message"
-
-  install-python-deps:
-    desc: Install Python dependencies
-    cmds:
-      - |
-        echo "Installing Python dependencies..."
-        if command -v pip3 >/dev/null 2>&1; then
-          echo "Using pip3..."
-          pip3 install --user nats-py || pip3 install --break-system-packages nats-py
-          echo "Note - ESPHome requires additional setup. Install with - pip3 install --user esphome"
-        elif command -v pip >/dev/null 2>&1; then
-          echo "Using pip..."
-          pip install --user nats-py || pip install --break-system-packages nats-py
-          echo "Note - ESPHome requires additional setup. Install with - pip install --user esphome"
-        else
-          echo "⚠️  Python pip not found. Please install Python 3 and pip."
-          echo "   On macOS - brew install python3"
-          echo "   On Ubuntu/Debian - sudo apt install python3-pip"
-          echo "   On Fedora - sudo dnf install python3-pip"
-          echo ""
-          echo "After installing pip, run - pip3 install nats-py esphome"
-        fi
-
-  check-deps:
-    desc: Check installed dependencies
-    cmds:
-      - |
-        echo "Checking dependencies..."
-        echo ""
-        echo "Container tool:"
-        if command -v docker >/dev/null 2>&1; then
-          echo "  ✅ Docker: $(docker --version)"
-        else
-          echo "  ❌ Docker: not found"
-        fi
-        if command -v podman >/dev/null 2>&1; then
-          echo "  ✅ Podman: $(podman --version)"
-        else
-          echo "  ❌ Podman: not found"
-        fi
-        echo ""
-        echo "Go:"
-        if command -v go >/dev/null 2>&1; then
-          echo "  ✅ Go: $(go version)"
-        else
-          echo "  ❌ Go: not found (needed for services)"
-        fi
-        echo ""
-        echo "Python:"
-        if command -v python3 >/dev/null 2>&1; then
-          echo "  ✅ Python3: $(python3 --version)"
-        else
-          echo "  ❌ Python3: not found"
-        fi
-        if command -v pip3 >/dev/null 2>&1; then
-          echo "  ✅ pip3: found"
-        else
-          echo "  ❌ pip3: not found"
-        fi
-        if command -v pip >/dev/null 2>&1; then
-          echo "  ✅ pip: found"
-        else
-          echo "  ❌ pip: not found"
-        fi
-        echo ""
-        echo "NATS CLI:"
-        if command -v nats >/dev/null 2>&1; then
-          echo "  ✅ NATS CLI: $(nats --version)"
-        else
-          echo "  ❌ NATS CLI: not found (install with - go install github.com/nats-io/natscli/nats@latest)"
-        fi
-
-  install:
-    desc: Install all binaries to /usr/local/bin
-    cmds:
-      - echo "Installing NATS Home Automation binaries..."
-      - task: services:discovery:install
-      - task: tools:cli:install
-      - echo ""
-      - echo "✅ Installation complete!"
-      - echo ""
-      - echo "Installed binaries:"
-      - 'echo "  - discovery-service: Device discovery and registry service"'
-      - 'echo "  - nats-ha: CLI tool for managing NATS home automation"'
-      - echo ""
-      - echo "To run the discovery service:"
-      - echo "  discovery-service"
-      - echo ""
-      - echo "To use the CLI:"
-      - echo "  nats-ha --help"
-      - echo "  nats-ha device list"
-      - echo "  nats-ha tui"
-
-  uninstall:
-    desc: Uninstall all binaries from /usr/local/bin
-    cmds:
-      - echo "Uninstalling NATS Home Automation binaries..."
-      - task: services:discovery:uninstall
-      - task: tools:cli:uninstall
-      - echo "✅ Uninstallation complete!"
+      - task: down

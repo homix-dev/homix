@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/nats-io/nats.go"
 )
 
 // Device handlers
@@ -41,6 +43,51 @@ func (s *Server) handleGetDevice(w http.ResponseWriter, r *http.Request) {
 	s.sendJSON(w, APIResponse{
 		Success: true,
 		Data:    device,
+	})
+}
+
+func (s *Server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
+	var device Device
+	if err := json.NewDecoder(r.Body).Decode(&device); err != nil {
+		s.sendError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Generate ID if not provided
+	if device.ID == "" {
+		device.ID = fmt.Sprintf("%s_%d", device.Type, time.Now().UnixNano())
+	}
+
+	// Set timestamps
+	device.CreatedAt = time.Now()
+	device.UpdatedAt = time.Now()
+	device.LastSeen = time.Now()
+	device.Online = true
+
+	// Initialize state and config if not provided
+	if device.State == nil {
+		device.State = make(map[string]interface{})
+	}
+	if device.Config == nil {
+		device.Config = make(map[string]interface{})
+	}
+
+	// Store device
+	s.mu.Lock()
+	s.devices[device.ID] = &device
+	s.mu.Unlock()
+
+	// Save to KV store
+	s.saveDevice(&device)
+
+	// Register with discovery service via NATS
+	deviceMsg, _ := json.Marshal(device)
+	s.natsConn.Publish("home.discovery.register", deviceMsg)
+
+	s.sendJSON(w, APIResponse{
+		Success: true,
+		Data:    device,
+		Message: "Device created successfully",
 	})
 }
 
@@ -761,31 +808,88 @@ func (s *Server) handleGetEvents(w http.ResponseWriter, r *http.Request) {
 
 // Auth handlers
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var credentials map[string]string
-	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+	var loginReq LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
 		s.sendError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	// TODO: Implement proper authentication
-	// For now, accept any credentials
-	user := User{
-		ID:        "user1",
-		Username:  credentials["username"],
-		Email:     credentials["email"],
-		Role:      "admin",
+	// Validate credentials by attempting to connect to NATS
+	testConn, err := nats.Connect(
+		s.config.NATS.URL,
+		nats.UserInfo(loginReq.Username, loginReq.Password),
+		nats.Timeout(5*time.Second),
+	)
+	if err != nil {
+		s.logger.Warnf("Login failed for user %s: %v", loginReq.Username, err)
+		s.sendJSON(w, LoginResponse{
+			Success: false,
+			Error:   "Invalid username or password",
+		})
+		return
+	}
+	defer testConn.Close()
+
+	// Create session
+	sessionID := fmt.Sprintf("session_%d", time.Now().UnixNano())
+	session := &Session{
+		ID:           sessionID,
+		UserID:       loginReq.Username,
+		Username:     loginReq.Username,
+		NATSUser:     loginReq.Username,
+		NATSPassword: loginReq.Password,
+		CreatedAt:    time.Now(),
+		ExpiresAt:    time.Now().Add(time.Duration(s.config.Session.Timeout)),
+	}
+
+	// Store session
+	s.mu.Lock()
+	s.sessions[sessionID] = session
+	s.mu.Unlock()
+
+	// Create user object
+	user := &User{
+		ID:        loginReq.Username,
+		Username:  loginReq.Username,
+		Email:     fmt.Sprintf("%s@nats.local", loginReq.Username),
+		Role:      s.getUserRole(loginReq.Username),
 		LastLogin: time.Now(),
 	}
 
-	s.sendJSON(w, APIResponse{
+	s.logger.Infof("User %s logged in successfully", loginReq.Username)
+
+	// Return session token and user info
+	s.sendJSON(w, LoginResponse{
 		Success: true,
-		Data:    user,
-		Message: "Login successful",
+		Token:   sessionID,
+		User:    user,
 	})
 }
 
+func (s *Server) getUserRole(username string) string {
+	// Define role mappings - this could be configured
+	switch username {
+	case "admin", "home":
+		return "admin"
+	case "viewer":
+		return "viewer"
+	default:
+		return "user"
+	}
+}
+
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement proper session management
+	// Get session from request
+	token := r.Header.Get("Authorization")
+	if token != "" && strings.HasPrefix(token, "Bearer ") {
+		sessionID := strings.TrimPrefix(token, "Bearer ")
+		
+		// Remove session
+		s.mu.Lock()
+		delete(s.sessions, sessionID)
+		s.mu.Unlock()
+	}
+
 	s.sendJSON(w, APIResponse{
 		Success: true,
 		Message: "Logout successful",
@@ -793,12 +897,19 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement proper user retrieval
+	// Get session from context (set by auth middleware)
+	sessionVal := r.Context().Value("session")
+	if sessionVal == nil {
+		s.sendError(w, http.StatusUnauthorized, "No session found")
+		return
+	}
+	session := sessionVal.(*Session)
+	
 	user := User{
-		ID:       "user1",
-		Username: "admin",
-		Email:    "admin@example.com",
-		Role:     "admin",
+		ID:       session.UserID,
+		Username: session.Username,
+		Email:    fmt.Sprintf("%s@nats.local", session.Username),
+		Role:     s.getUserRole(session.Username),
 	}
 
 	s.sendJSON(w, APIResponse{

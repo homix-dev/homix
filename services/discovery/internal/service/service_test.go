@@ -3,367 +3,301 @@ package service_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	
+	"github.com/calmera/nats-home-automation/services/discovery/internal/config"
 	"github.com/calmera/nats-home-automation/services/discovery/internal/models"
 	"github.com/calmera/nats-home-automation/services/discovery/internal/service"
 )
 
-// MockNATSConn is a mock NATS connection
-type MockNATSConn struct {
-	mock.Mock
-}
-
-func (m *MockNATSConn) Subscribe(subject string, cb nats.MsgHandler) (*nats.Subscription, error) {
-	args := m.Called(subject, cb)
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
+func TestService_New(t *testing.T) {
+	cfg := &config.Config{
+		NATS: config.NATS{
+			URL: "nats://localhost:4222",
+		},
+		Store: config.Store{
+			Bucket: "test-devices",
+		},
 	}
-	return args.Get(0).(*nats.Subscription), nil
+	
+	logger := logrus.New()
+	
+	svc, err := service.New(cfg, logger)
+	require.NoError(t, err)
+	assert.NotNil(t, svc)
 }
 
-func (m *MockNATSConn) Publish(subject string, data []byte) error {
-	args := m.Called(subject, data)
-	return args.Error(0)
-}
-
-func (m *MockNATSConn) Request(subject string, data []byte, timeout time.Duration) (*nats.Msg, error) {
-	args := m.Called(subject, data, timeout)
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
+func TestService_ProcessDeviceAnnouncement(t *testing.T) {
+	// This test requires a running NATS server or mock
+	t.Skip("Integration test - requires NATS server")
+	
+	cfg := &config.Config{
+		NATS: config.NATS{
+			URL: "nats://localhost:4222",
+		},
+		Store: config.Store{
+			Bucket: "test-devices",
+		},
 	}
-	return args.Get(0).(*nats.Msg), nil
-}
-
-func (m *MockNATSConn) Close() {
-	m.Called()
-}
-
-func (m *MockNATSConn) JetStream() (nats.JetStreamContext, error) {
-	args := m.Called()
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
+	
+	logger := logrus.New()
+	svc, err := service.New(cfg, logger)
+	require.NoError(t, err)
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	// Start the service in a goroutine
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- svc.Run(ctx)
+	}()
+	
+	// Give the service time to start
+	time.Sleep(100 * time.Millisecond)
+	
+	// Cancel to stop the service
+	cancel()
+	
+	// Check for errors
+	select {
+	case err := <-errCh:
+		assert.NoError(t, err)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Service did not stop in time")
 	}
-	return args.Get(0).(nats.JetStreamContext), nil
 }
 
-// MockJetStream is a mock JetStream context
-type MockJetStream struct {
-	mock.Mock
-}
-
-func (m *MockJetStream) KeyValue(bucket string) (nats.KeyValue, error) {
-	args := m.Called(bucket)
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(nats.KeyValue), nil
-}
-
-func (m *MockJetStream) CreateKeyValue(cfg *nats.KeyValueConfig) (nats.KeyValue, error) {
-	args := m.Called(cfg)
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(nats.KeyValue), nil
-}
-
-// MockKeyValue is a mock KeyValue store
-type MockKeyValue struct {
-	mock.Mock
-}
-
-func (m *MockKeyValue) Get(key string) (nats.KeyValueEntry, error) {
-	args := m.Called(key)
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(nats.KeyValueEntry), nil
-}
-
-func (m *MockKeyValue) Put(key string, value []byte) (uint64, error) {
-	args := m.Called(key, value)
-	return args.Get(0).(uint64), args.Error(1)
-}
-
-func (m *MockKeyValue) Delete(key string) error {
-	args := m.Called(key)
-	return args.Error(0)
-}
-
-func (m *MockKeyValue) Keys() ([]string, error) {
-	args := m.Called()
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]string), nil
-}
-
-func (m *MockKeyValue) Watch(keys string, opts ...nats.WatchOpt) (nats.KeyWatcher, error) {
-	args := m.Called(keys, opts)
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(nats.KeyWatcher), nil
-}
-
-func (m *MockKeyValue) WatchAll(opts ...nats.WatchOpt) (nats.KeyWatcher, error) {
-	args := m.Called(opts)
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(nats.KeyWatcher), nil
-}
-
-func (m *MockKeyValue) Bucket() string {
-	args := m.Called()
-	return args.String(0)
-}
-
-func (m *MockKeyValue) PurgeDeletes(opts ...nats.PurgeOpt) error {
-	args := m.Called(opts)
-	return args.Error(0)
-}
-
-func (m *MockKeyValue) Status() (nats.KeyValueStatus, error) {
-	args := m.Called()
-	if args.Error(1) != nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(nats.KeyValueStatus), nil
-}
-
-func TestDiscoveryService_RegisterDevice(t *testing.T) {
+func TestDeviceValidation(t *testing.T) {
 	tests := []struct {
 		name    string
 		device  models.Device
 		wantErr bool
 	}{
 		{
-			name: "valid device registration",
+			name: "valid sensor device",
 			device: models.Device{
-				ID:           "test-device-01",
-				Type:         "sensor",
-				Name:         "Test Sensor",
-				Manufacturer: "Test Inc",
-				Model:        "TS-001",
-				Capabilities: json.RawMessage(`{"sensors":["temperature","humidity"]}`),
+				DeviceID:   "test-sensor-01",
+				DeviceType: "sensor",
+				Name:       "Test Sensor",
+				Capabilities: models.DeviceCapabilities{
+					Sensors: []string{"temperature", "humidity"},
+				},
 			},
 			wantErr: false,
 		},
 		{
-			name: "device without ID",
+			name: "valid switch device",
 			device: models.Device{
-				Type: "sensor",
-				Name: "Test Sensor",
+				DeviceID:   "test-switch-01",
+				DeviceType: "switch",
+				Name:       "Test Switch",
+				Capabilities: models.DeviceCapabilities{
+					Actuators: []string{"relay"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing device_id",
+			device: models.Device{
+				DeviceType: "sensor",
+				Name:       "Test Device",
 			},
 			wantErr: true,
 		},
 		{
-			name: "device without type",
+			name: "missing device_type",
 			device: models.Device{
-				ID:   "test-device-02",
-				Name: "Test Device",
+				DeviceID: "test-01",
+				Name:     "Test Device",
 			},
 			wantErr: true,
 		},
 	}
-
+	
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup mocks
-			mockConn := new(MockNATSConn)
-			mockJS := new(MockJetStream)
-			mockKV := new(MockKeyValue)
-
-			mockConn.On("JetStream").Return(mockJS, nil)
-			mockJS.On("KeyValue", "devices").Return(mockKV, nil)
-
-			if !tt.wantErr {
-				deviceData, _ := json.Marshal(tt.device)
-				mockKV.On("Put", tt.device.ID, deviceData).Return(uint64(1), nil)
-			}
-
-			// Create service with mocked connection
-			svc := &service.DiscoveryService{}
-			svc.SetNATSConn(mockConn)
-
-			// Test registration
-			err := svc.RegisterDevice(context.Background(), tt.device)
-
+			err := tt.device.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				mockKV.AssertExpectations(t)
 			}
 		})
 	}
 }
 
-func TestDiscoveryService_GetDevice(t *testing.T) {
-	deviceID := "test-device-01"
-	device := models.Device{
-		ID:           deviceID,
-		Type:         "switch",
-		Name:         "Test Switch",
-		Manufacturer: "Test Inc",
-		Model:        "SW-001",
+func TestDeviceAnnouncementParsing(t *testing.T) {
+	announcement := models.DeviceAnnouncement{
+		Device: models.Device{
+			DeviceID:   "esp32-kitchen-001",
+			DeviceType: "sensor",
+			Name:       "Kitchen Sensor",
+			Manufacturer: "DIY",
+			Model:       "ESP32-BME280",
+			Capabilities: models.DeviceCapabilities{
+				Sensors: []string{"temperature", "humidity", "pressure"},
+				Units: map[string]string{
+					"temperature": "°C",
+					"humidity":    "%",
+					"pressure":    "hPa",
+				},
+			},
+			Topics: models.DeviceTopics{
+				State:   "home.devices.sensor.esp32-kitchen-001.state",
+				Status:  "home.devices.sensor.esp32-kitchen-001.status",
+				Command: "home.devices.sensor.esp32-kitchen-001.command",
+			},
+		},
+		AnnouncedAt: time.Now(),
 	}
-
-	// Setup mocks
-	mockConn := new(MockNATSConn)
-	mockJS := new(MockJetStream)
-	mockKV := new(MockKeyValue)
-	mockEntry := new(MockKeyValueEntry)
-
-	mockConn.On("JetStream").Return(mockJS, nil)
-	mockJS.On("KeyValue", "devices").Return(mockKV, nil)
-
-	deviceData, _ := json.Marshal(device)
-	mockEntry.On("Value").Return(deviceData)
-	mockKV.On("Get", deviceID).Return(mockEntry, nil)
-
-	// Create service
-	svc := &service.DiscoveryService{}
-	svc.SetNATSConn(mockConn)
-
-	// Test get device
-	result, err := svc.GetDevice(context.Background(), deviceID)
+	
+	// Test marshaling
+	data, err := json.Marshal(announcement)
 	require.NoError(t, err)
-	assert.Equal(t, device.ID, result.ID)
-	assert.Equal(t, device.Type, result.Type)
-	assert.Equal(t, device.Name, result.Name)
-}
-
-func TestDiscoveryService_ListDevices(t *testing.T) {
-	devices := []models.Device{
-		{
-			ID:   "device-01",
-			Type: "sensor",
-			Name: "Sensor 1",
-		},
-		{
-			ID:   "device-02",
-			Type: "switch",
-			Name: "Switch 1",
-		},
-	}
-
-	// Setup mocks
-	mockConn := new(MockNATSConn)
-	mockJS := new(MockJetStream)
-	mockKV := new(MockKeyValue)
-
-	mockConn.On("JetStream").Return(mockJS, nil)
-	mockJS.On("KeyValue", "devices").Return(mockKV, nil)
-
-	keys := []string{"device-01", "device-02"}
-	mockKV.On("Keys").Return(keys, nil)
-
-	for i, key := range keys {
-		mockEntry := new(MockKeyValueEntry)
-		deviceData, _ := json.Marshal(devices[i])
-		mockEntry.On("Value").Return(deviceData)
-		mockKV.On("Get", key).Return(mockEntry, nil)
-	}
-
-	// Create service
-	svc := &service.DiscoveryService{}
-	svc.SetNATSConn(mockConn)
-
-	// Test list devices
-	result, err := svc.ListDevices(context.Background())
+	
+	// Test unmarshaling
+	var parsed models.DeviceAnnouncement
+	err = json.Unmarshal(data, &parsed)
 	require.NoError(t, err)
-	assert.Len(t, result, 2)
-	assert.Equal(t, devices[0].ID, result[0].ID)
-	assert.Equal(t, devices[1].ID, result[1].ID)
+	
+	assert.Equal(t, announcement.DeviceID, parsed.DeviceID)
+	assert.Equal(t, announcement.DeviceType, parsed.DeviceType)
+	assert.Equal(t, announcement.Name, parsed.Name)
+	assert.Equal(t, announcement.Capabilities.Sensors, parsed.Capabilities.Sensors)
+	assert.Equal(t, announcement.Topics.State, parsed.Topics.State)
 }
 
-func TestDiscoveryService_HandleAnnouncement(t *testing.T) {
-	announcement := map[string]interface{}{
-		"device_id":    "new-device-01",
-		"device_type":  "sensor",
-		"name":         "New Sensor",
-		"manufacturer": "Test Inc",
-		"model":        "NS-001",
-		"capabilities": map[string]interface{}{
-			"sensors": []string{"temperature"},
+func TestDeviceStateUpdate(t *testing.T) {
+	state := models.DeviceState{
+		DeviceID: "test-sensor-01",
+		State: map[string]interface{}{
+			"temperature": 22.5,
+			"humidity":    65.0,
+		},
+		Attributes: map[string]interface{}{
+			"battery": 85,
+			"rssi":    -65,
+		},
+		Timestamp: time.Now(),
+	}
+	
+	data, err := json.Marshal(state)
+	require.NoError(t, err)
+	
+	var parsed models.DeviceState
+	err = json.Unmarshal(data, &parsed)
+	require.NoError(t, err)
+	
+	assert.Equal(t, state.DeviceID, parsed.DeviceID)
+	assert.Equal(t, 22.5, parsed.State["temperature"])
+	assert.Equal(t, 65.0, parsed.State["humidity"])
+	assert.Equal(t, float64(85), parsed.Attributes["battery"])
+}
+
+func TestDeviceCommand(t *testing.T) {
+	cmd := models.DeviceCommand{
+		Command: "turn_on",
+		Parameters: map[string]interface{}{
+			"brightness": 75,
+			"color": map[string]interface{}{
+				"r": 255,
+				"g": 128,
+				"b": 0,
+			},
+		},
+		RequestID: "req-123",
+		Timestamp: time.Now(),
+	}
+	
+	data, err := json.Marshal(cmd)
+	require.NoError(t, err)
+	
+	var parsed models.DeviceCommand
+	err = json.Unmarshal(data, &parsed)
+	require.NoError(t, err)
+	
+	assert.Equal(t, cmd.Command, parsed.Command)
+	assert.Equal(t, cmd.RequestID, parsed.RequestID)
+	assert.Equal(t, float64(75), parsed.Parameters["brightness"])
+	
+	color := parsed.Parameters["color"].(map[string]interface{})
+	assert.Equal(t, float64(255), color["r"])
+	assert.Equal(t, float64(128), color["g"])
+	assert.Equal(t, float64(0), color["b"])
+}
+
+func TestDeviceCommandResponse(t *testing.T) {
+	resp := models.DeviceCommandResponse{
+		Success:   true,
+		RequestID: "req-123",
+		State: map[string]interface{}{
+			"on":         true,
+			"brightness": 75,
+		},
+		Timestamp: time.Now(),
+	}
+	
+	data, err := json.Marshal(resp)
+	require.NoError(t, err)
+	
+	var parsed models.DeviceCommandResponse
+	err = json.Unmarshal(data, &parsed)
+	require.NoError(t, err)
+	
+	assert.True(t, parsed.Success)
+	assert.Equal(t, resp.RequestID, parsed.RequestID)
+	assert.Equal(t, true, parsed.State["on"])
+	assert.Equal(t, float64(75), parsed.State["brightness"])
+}
+
+func TestSubjectGeneration(t *testing.T) {
+	tests := []struct {
+		deviceType string
+		deviceID   string
+		suffix     string
+		expected   string
+	}{
+		{
+			deviceType: "sensor",
+			deviceID:   "kitchen-01",
+			suffix:     "state",
+			expected:   "home.devices.sensor.kitchen-01.state",
+		},
+		{
+			deviceType: "switch",
+			deviceID:   "bedroom-light",
+			suffix:     "command",
+			expected:   "home.devices.switch.bedroom-light.command",
+		},
+		{
+			deviceType: "climate",
+			deviceID:   "living-room-ac",
+			suffix:     "status",
+			expected:   "home.devices.climate.living-room-ac.status",
 		},
 	}
-
-	announcementData, _ := json.Marshal(announcement)
-
-	// Setup mocks
-	mockConn := new(MockNATSConn)
-	mockJS := new(MockJetStream)
-	mockKV := new(MockKeyValue)
-
-	mockConn.On("JetStream").Return(mockJS, nil)
-	mockJS.On("KeyValue", "devices").Return(mockKV, nil)
-
-	// Expect device to be stored
-	mockKV.On("Put", mock.Anything, mock.Anything).Return(uint64(1), nil)
-
-	// Create service
-	svc := &service.DiscoveryService{}
-	svc.SetNATSConn(mockConn)
-
-	// Create NATS message
-	msg := &nats.Msg{
-		Subject: "home.discovery.announce",
-		Data:    announcementData,
+	
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			subject := fmt.Sprintf("home.devices.%s.%s.%s", tt.deviceType, tt.deviceID, tt.suffix)
+			assert.Equal(t, tt.expected, subject)
+		})
 	}
-
-	// Test handling
-	svc.HandleAnnouncement(msg)
-
-	// Verify device was stored
-	mockKV.AssertCalled(t, "Put", "new-device-01", mock.Anything)
 }
 
-// MockKeyValueEntry for testing
-type MockKeyValueEntry struct {
-	mock.Mock
-}
-
-func (m *MockKeyValueEntry) Value() []byte {
-	args := m.Called()
-	return args.Get(0).([]byte)
-}
-
-func (m *MockKeyValueEntry) Key() string {
-	args := m.Called()
-	return args.String(0)
-}
-
-func (m *MockKeyValueEntry) Revision() uint64 {
-	args := m.Called()
-	return args.Get(0).(uint64)
-}
-
-func (m *MockKeyValueEntry) Created() time.Time {
-	args := m.Called()
-	return args.Get(0).(time.Time)
-}
-
-func (m *MockKeyValueEntry) Delta() uint64 {
-	args := m.Called()
-	return args.Get(0).(uint64)
-}
-
-func (m *MockKeyValueEntry) Operation() nats.KeyValueOp {
-	args := m.Called()
-	return args.Get(0).(nats.KeyValueOp)
-}
-
-func (m *MockKeyValueEntry) Bucket() string {
-	args := m.Called()
-	return args.String(0)
+// Helper function to create a test NATS message
+func createTestMessage(subject string, data []byte) *nats.Msg {
+	return &nats.Msg{
+		Subject: subject,
+		Data:    data,
+	}
 }

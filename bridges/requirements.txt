@@ -1,5 +1,5 @@
 # MQTT/NATS Bridge Requirements
-asyncio-nats-client>=0.14.0
+nats-py>=2.0.0
 asyncio-mqtt>=0.16.0
 paho-mqtt>=1.6.0
 aiofiles>=23.0.0

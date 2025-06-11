@@ -6,6 +6,7 @@
     <title>NATS Home Automation - Management UI</title>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div id="app">
@@ -36,6 +37,10 @@
                 <li class="nav-item" data-page="events">
                     <i class="fas fa-list"></i>
                     <span>Events</span>
+                </li>
+                <li class="nav-item" data-page="monitoring">
+                    <i class="fas fa-heartbeat"></i>
+                    <span>Health Monitor</span>
                 </li>
                 <li class="nav-item" data-page="settings">
                     <i class="fas fa-cog"></i>
@@ -70,10 +75,23 @@
                         <i class="fas fa-bell"></i>
                         <span class="notification-badge" style="display: none;">0</span>
                     </button>
-                    <div class="user-menu">
-                        <img src="img/user-avatar.png" alt="User" class="user-avatar">
-                        <span class="user-name">Admin</span>
+                    <div class="user-menu" id="user-menu">
+                        <img data-avatar="Administrator" data-avatar-size="32" alt="User" class="user-avatar">
+                        <span class="user-name" id="user-name">Admin</span>
                         <i class="fas fa-chevron-down"></i>
+                        <div class="user-dropdown" id="user-dropdown">
+                            <div class="user-info">
+                                <strong id="user-fullname">Administrator</strong>
+                                <span id="user-role">Admin</span>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <a href="#" onclick="app.showProfile(); return false;">
+                                <i class="fas fa-user"></i> Profile
+                            </a>
+                            <a href="#" onclick="auth.logout(); return false;">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </a>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -271,6 +289,11 @@
                     </div>
                 </div>
 
+                <!-- Monitoring Page -->
+                <div class="page" id="monitoring-page" style="display: none;">
+                    <!-- Content will be rendered by monitoring.js -->
+                </div>
+
                 <!-- Settings Page -->
                 <div class="page" id="settings-page" style="display: none;">
                     <div class="settings-container">
@@ -369,9 +392,21 @@
     <!-- Toast Container -->
     <div class="toast-container" id="toast-container"></div>
 
+    <script src="js/auth.js"></script>
     <script src="js/api.js"></script>
     <script src="js/websocket.js"></script>
     <script src="js/ui.js"></script>
+    <script src="js/avatar-generator.js"></script>
+    <script src="js/device-controls.js"></script>
+    <script src="js/automation-builder.js"></script>
+    <script src="js/scene-editor.js"></script>
+    <script src="js/monitoring.js"></script>
     <script src="js/app.js"></script>
+    <script>
+        // Debug auth state
+        console.log('Page loaded - checking auth state:');
+        console.log('localStorage auth_token:', localStorage.getItem('auth_token'));
+        console.log('sessionStorage auth_token:', sessionStorage.getItem('auth_token'));
+    </script>
 </body>
 </html>

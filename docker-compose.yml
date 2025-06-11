@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # NATS Server - Core messaging infrastructure
+  nats:
+    image: nats:2.11
+    container_name: nats-home-automation
+    ports:
+      - "4222:4222"   # Client connections
+      - "8222:8222"   # HTTP management
+      - "6222:6222"   # Cluster
+    volumes:
+      - ./infrastructure/nats-server-dev.conf:/etc/nats/nats-server.conf:ro
+      - ./infrastructure/data:/data
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/nats-server", "-ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - nats-network
+
+  # Discovery Service
+  discovery:
+    # Use pre-built image if available, fallback to local build
+    image: ${DISCOVERY_IMAGE:-}
+    build:
+      context: ./services/discovery
+      dockerfile: Dockerfile
+    container_name: nats-discovery
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+      - CONFIG_FILE=/app/discovery.yaml
+    volumes:
+      - ./services/discovery/discovery.yaml:/app/discovery.yaml:ro
+    command: ["./discovery", "--nats-url", "nats://home:changeme@nats:4222"]
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Management UI
+  management-ui:
+    # Use pre-built image if available, fallback to local build
+    image: ${MANAGEMENT_UI_IMAGE:-}
+    build:
+      context: ./services/management-ui
+      dockerfile: Dockerfile
+    container_name: nats-management-ui
+    ports:
+      - "8081:8081"
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+      - PORT=8081
+    command: ["./management-ui", "--nats-url", "nats://home:changeme@nats:4222", "--http-addr", ":8081"]
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Health Monitor
+  health-monitor:
+    # Use pre-built image if available, fallback to local build
+    image: ${HEALTH_MONITOR_IMAGE:-}
+    build:
+      context: ./services/health-monitor
+      dockerfile: Dockerfile
+    container_name: nats-health-monitor
+    ports:
+      - "8082:8082"
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+      - PORT=8082
+    command: ["./health-monitor", "--nats-url", "nats://home:changeme@nats:4222", "--http-addr", ":8082"]
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Optional: NATS CLI tools for debugging
+  nats-box:
+    image: natsio/nats-box:latest
+    container_name: nats-box
+    depends_on:
+      - nats
+    command: sleep infinity
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+    networks:
+      - nats-network
+    profiles:
+      - debug
+
+networks:
+  nats-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -1,0 +1,182 @@
+version: '3.8'
+
+services:
+  # NATS Server - Core messaging infrastructure
+  nats:
+    image: nats:2.11
+    container_name: nats-home-automation
+    ports:
+      - "4222:4222"   # Client connections
+      - "8222:8222"   # HTTP management
+      - "6222:6222"   # Cluster
+    volumes:
+      - ./infrastructure/nats-server-dev.conf:/etc/nats/nats-server.conf:ro
+      - ./infrastructure/data:/data
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - nats-network
+
+  # Discovery Service
+  discovery:
+    build:
+      context: ./services/discovery
+      dockerfile: Dockerfile
+    container_name: nats-discovery
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+      - CONFIG_FILE=/app/discovery.yaml
+    volumes:
+      - ./services/discovery/discovery.yaml:/app/discovery.yaml:ro
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Management UI
+  management-ui:
+    build:
+      context: ./services/management-ui
+      dockerfile: Dockerfile
+    container_name: nats-management-ui
+    ports:
+      - "8081:8081"
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+      - PORT=8081
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Health Monitor
+  health-monitor:
+    build:
+      context: ./services/health-monitor
+      dockerfile: Dockerfile
+    container_name: nats-health-monitor
+    ports:
+      - "8082:8082"
+    depends_on:
+      nats:
+        condition: service_healthy
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+      - PORT=8082
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Home Assistant
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./homeassistant-config:/config
+      - ./ha-integration/custom_components/nats_bridge:/config/custom_components/nats_bridge:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=${TZ:-America/New_York}
+    restart: unless-stopped
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - nats-network
+    privileged: true
+
+  # MQTT to NATS Bridge (for Zigbee2MQTT integration)
+  mqtt-nats-bridge:
+    build:
+      context: ./bridges/mqtt-nats-bridge
+      dockerfile: Dockerfile
+    container_name: mqtt-nats-bridge
+    depends_on:
+      nats:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+      - MQTT_BROKER=mqtt://mosquitto:1883
+      - CONFIG_FILE=/app/config.yaml
+    volumes:
+      - ./bridges/config.yaml:/app/config.yaml:ro
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Mosquitto MQTT Broker (for Zigbee2MQTT)
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./bridges/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    restart: unless-stopped
+    networks:
+      - nats-network
+
+  # Optional: Zigbee2MQTT (requires Zigbee adapter)
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt
+    container_name: zigbee2mqtt
+    restart: unless-stopped
+    volumes:
+      - ./zigbee2mqtt-data:/app/data
+      - /run/udev:/run/udev:ro
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=${TZ:-America/New_York}
+    devices:
+      # Update this with your Zigbee adapter device
+      # - /dev/ttyUSB0:/dev/ttyUSB0
+      - /dev/ttyACM0:/dev/ttyACM0
+    depends_on:
+      - mosquitto
+    networks:
+      - nats-network
+    profiles:
+      - zigbee
+
+  # Optional: NATS CLI tools for debugging
+  nats-box:
+    image: natsio/nats-box:latest
+    container_name: nats-box
+    depends_on:
+      - nats
+    command: sleep infinity
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+    networks:
+      - nats-network
+    profiles:
+      - debug
+
+networks:
+  nats-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:

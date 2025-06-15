@@ -201,4 +201,4 @@ lsof -i :4222
 2. Run manual validation: `./scripts/validate-environment.sh`
 3. Try a complete reset: `task reset`
 4. Check for updates: `git pull`
-5. Report issues: https://github.com/calmera/nats-home-automation/issues
+5. Report issues: https://github.com/homix-dev/homix/issues

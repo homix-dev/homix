@@ -34,7 +34,7 @@
 - **Docker Images**: 
   - `ghcr.io/calmera/homix-edge`
   - `ghcr.io/calmera/homix-simulator`
-- **Go Module**: `github.com/calmera/homix`
+- **Go Module**: `github.com/homix-dev/homix`
 - **Config Files**: `homix.yaml`, `homix.conf`
 
 ## URLs & Domains

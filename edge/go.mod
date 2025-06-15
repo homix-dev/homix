@@ -1,4 +1,4 @@
-module github.com/calmera/homix/edge
+module github.com/homix-dev/homix/edge
 
 go 1.23.0
 

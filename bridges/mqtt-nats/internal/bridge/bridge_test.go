@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/calmera/nats-home-automation/bridges/mqtt-nats/internal/bridge"
-	"github.com/calmera/nats-home-automation/bridges/mqtt-nats/internal/config"
+	"github.com/homix-dev/homix/bridges/mqtt-nats/internal/bridge"
+	"github.com/homix-dev/homix/bridges/mqtt-nats/internal/config"
 )
 
 // MockMQTTClient mocks the MQTT client

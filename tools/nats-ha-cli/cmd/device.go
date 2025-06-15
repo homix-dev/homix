@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/calmera/nats-home-automation/tools/nats-ha-cli/internal/client"
+	"github.com/homix-dev/homix/tools/nats-ha-cli/internal/client"
 	"github.com/spf13/cobra"
 )
 

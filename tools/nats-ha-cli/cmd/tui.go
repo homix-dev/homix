@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/calmera/nats-home-automation/tools/nats-ha-cli/internal/tui"
+	"github.com/homix-dev/homix/tools/nats-ha-cli/internal/tui"
 	"github.com/spf13/cobra"
 )
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/calmera/nats-home-automation/tools/nats-ha-cli/cmd"
+	"github.com/homix-dev/homix/tools/nats-ha-cli/cmd"
 )
 
 func main() {

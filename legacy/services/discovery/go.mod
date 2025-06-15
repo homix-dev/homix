@@ -1,4 +1,4 @@
-module github.com/calmera/nats-home-automation/services/discovery
+module github.com/homix-dev/homix/services/discovery
 
 go 1.21
 

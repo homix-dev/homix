@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	
-	"github.com/calmera/nats-home-automation/services/discovery/internal/config"
-	"github.com/calmera/nats-home-automation/services/discovery/internal/models"
-	"github.com/calmera/nats-home-automation/services/discovery/internal/service"
+	"github.com/homix-dev/homix/services/discovery/internal/config"
+	"github.com/homix-dev/homix/services/discovery/internal/models"
+	"github.com/homix-dev/homix/services/discovery/internal/service"
 )
 
 func TestService_New(t *testing.T) {

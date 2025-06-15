@@ -3,8 +3,8 @@ package cmd
 import (
 	"context"
 
-	"github.com/calmera/nats-home-automation/services/discovery/internal/config"
-	"github.com/calmera/nats-home-automation/services/discovery/internal/service"
+	"github.com/homix-dev/homix/services/discovery/internal/config"
+	"github.com/homix-dev/homix/services/discovery/internal/service"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

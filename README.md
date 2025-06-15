@@ -121,7 +121,7 @@ docker run -d \
 
 ```bash
 # Clone repository
-git clone https://github.com/calmera/nats-home-automation
+git clone https://github.com/homix-dev/homix
 cd nats-home-automation
 
 # Run edge server locally
@@ -139,8 +139,8 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## 🆘 Support
 
 - **Discord**: [Join our community](https://discord.gg/nats-home)
-- **Issues**: [Report bugs](https://github.com/calmera/nats-home-automation/issues)
-- **Discussions**: [Ask questions](https://github.com/calmera/nats-home-automation/discussions)
+- **Issues**: [Report bugs](https://github.com/homix-dev/homix/issues)
+- **Discussions**: [Ask questions](https://github.com/homix-dev/homix/discussions)
 
 ## 📄 License
 

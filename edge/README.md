@@ -27,7 +27,7 @@ docker run -d \
 
 ```bash
 # Clone repository
-git clone https://github.com/calmera/homix
+git clone https://github.com/homix-dev/homix
 cd homix/edge
 
 # Build

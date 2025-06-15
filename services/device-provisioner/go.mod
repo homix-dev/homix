@@ -1,4 +1,4 @@
-module github.com/calmera/homix/services/device-provisioner
+module github.com/homix-dev/homix/services/device-provisioner
 
 go 1.23.0
 

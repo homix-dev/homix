@@ -124,7 +124,7 @@ docker exec homix-edge nats sub "home.devices.*.announce"
 ### Need help?
 - 📚 [Full Documentation](https://docs.homix.dev)
 - 💬 [Discord Community](https://discord.gg/homix)
-- 🐛 [Report Issues](https://github.com/calmera/homix/issues)
+- 🐛 [Report Issues](https://github.com/homix-dev/homix/issues)
 
 ---
 

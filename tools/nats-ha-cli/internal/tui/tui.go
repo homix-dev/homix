@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/calmera/nats-home-automation/tools/nats-ha-cli/internal/client"
+	"github.com/homix-dev/homix/tools/nats-ha-cli/internal/client"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"

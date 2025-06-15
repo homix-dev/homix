@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/calmera/nats-home-automation/services/discovery/internal/models"
+	"github.com/homix-dev/homix/services/discovery/internal/models"
 )
 
 func TestDevice_Validate(t *testing.T) {

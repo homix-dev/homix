@@ -20,7 +20,7 @@ go build -o nats-ha
 
 Or install directly:
 ```bash
-go install github.com/calmera/nats-home-automation/tools/nats-ha-cli@latest
+go install github.com/homix-dev/homix/tools/nats-ha-cli@latest
 ```
 
 ## Usage
@@ -219,7 +219,7 @@ If the TUI doesn't display correctly:
 
 Using Task (recommended):
 ```bash
-git clone https://github.com/calmera/nats-home-automation
+git clone https://github.com/homix-dev/homix
 cd nats-home-automation
 task tools:cli:build
 ```

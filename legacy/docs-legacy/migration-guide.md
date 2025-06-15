@@ -272,4 +272,4 @@ After successful migration:
 
 - NATS Documentation: https://docs.nats.io
 - Synadia Cloud: https://docs.synadia.com
-- Project Issues: https://github.com/calmera/nats-home-automation/issues
+- Project Issues: https://github.com/homix-dev/homix/issues

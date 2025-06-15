@@ -180,5 +180,5 @@ Common issues:
 ## Getting Help
 
 - **Discord**: [Join our community](https://discord.gg/homix)
-- **GitHub**: [Report issues](https://github.com/calmera/homix/issues)
+- **GitHub**: [Report issues](https://github.com/homix-dev/homix/issues)
 - **Docs**: [Full documentation](https://docs.homix.dev)

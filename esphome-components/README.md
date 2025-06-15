@@ -42,7 +42,7 @@ Add to your ESPHome configuration:
 external_components:
   - source:
       type: git
-      url: https://github.com/calmera/nats-home-automation
+      url: https://github.com/homix-dev/homix
       ref: main
     components: [ nats_client, nats_sensor, nats_switch, nats_binary_sensor ]
 ```

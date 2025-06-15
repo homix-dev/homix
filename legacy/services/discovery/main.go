@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/calmera/nats-home-automation/services/discovery/cmd"
+	"github.com/homix-dev/homix/services/discovery/cmd"
 	"github.com/sirupsen/logrus"
 )
 

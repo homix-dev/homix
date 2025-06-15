@@ -1,216 +1,243 @@
 # NATS Home Automation Architecture
 
-This document describes the technical architecture of the NATS-based home automation system.
+NATS Home Automation uses a cloud-first architecture that combines the reliability of local execution with the convenience of cloud management.
 
-## System Overview
+## Overview
 
-The NATS Home Automation system is built on a microservices architecture with NATS as the central messaging backbone. This design provides:
+```
+┌─────────────────────────────────┐
+│       Synadia Cloud             │
+│                                 │
+│  • Web UI (React/Next.js)       │
+│  • User Authentication          │
+│  • Device Registry (KV)         │
+│  • Automation Store (KV)        │
+│  • Multi-Home Management        │
+│  • API Gateway                  │
+└────────────┬────────────────────┘
+             │ NATS Leaf Node
+             │ (TLS + JWT Auth)
+┌────────────▼────────────────────┐
+│       Your Home                 │
+│                                 │
+│  Edge Server (Single Container) │
+│  • NATS Server (Leaf Mode)      │
+│  • Automation Engine            │
+│  • Device Gateway               │
+│  • Protocol Bridges             │
+│  • Local State Cache            │
+└────────────┬────────────────────┘
+             │
+     ┌───────┴────────┐
+     │    Devices     │
+     │                │
+     │ • ESP32/ESP8266│
+     │ • Zigbee       │
+     │ • Z-Wave       │
+     │ • MQTT         │
+     │ • HTTP/REST    │
+     └────────────────┘
+```
 
-- **Decoupled components** that can be developed and deployed independently
-- **Real-time communication** with sub-millisecond latency
-- **Resilient operation** with automatic failover and reconnection
-- **Scalable architecture** supporting thousands of devices
+## Core Principles
 
-## Core Components
+### 1. Cloud Management, Local Execution
+- **Configuration** happens in the cloud (UI, device setup, automation design)
+- **Execution** happens locally (automations run on edge server)
+- **No internet? No problem!** Everything continues working
 
-### 1. NATS Infrastructure
+### 2. Security First
+- **Per-device JWT credentials** - Each device has unique, revocable credentials
+- **Principle of least privilege** - Devices only access their own subjects
+- **No shared secrets** - No more "home:changeme" passwords
+- **Automatic rotation** - Credentials can be rotated without touching devices
 
-The messaging backbone consists of:
+### 3. Simplicity
+- **One container** - Single edge server replaces 5+ containers
+- **Zero configuration** - Automatic discovery and setup
+- **5-minute install** - From zero to running in minutes
+- **No database required** - Uses NATS JetStream/KV for all storage
 
-- **Local NATS Server**: Runs on-premises for low-latency local communication
-- **Synadia Cloud Connection**: Optional cloud connectivity via leaf nodes
-- **JetStream**: Provides message persistence and at-least-once delivery
-- **Key-Value Store**: Distributed configuration management
+## Components
 
-### 2. Device Layer
+### Cloud Components (Synadia Cloud)
 
-#### ESPHome Devices
-- Custom NATS client components for ESP32/ESP8266
-- Native NATS protocol support
-- Automatic device announcement on boot
-- Resilient connection handling
+#### Web UI
+- Modern React/Next.js application
+- Real-time updates via NATS WebSocket
+- Visual automation designer
+- Device management dashboard
+- Energy monitoring
 
-#### Legacy Devices
-- Connected via protocol bridges
-- Maintains compatibility with existing ecosystems
-- Transparent NATS integration
+#### API Gateway
+- RESTful API for third-party integrations
+- GraphQL endpoint for complex queries
+- WebSocket for real-time updates
+- OAuth2/JWT authentication
 
-### 3. Service Layer
+#### Storage (NATS KV)
+- `users` - User accounts and permissions
+- `homes` - Home configurations
+- `devices` - Device registry
+- `automations` - Automation definitions
+- `dashboards` - Custom dashboards
 
-#### Discovery Service
-- Listens on `home.discovery.announce`
-- Maintains device registry in KV store
-- Publishes device availability events
-- Handles device type detection and classification
+### Edge Components (Your Home)
 
-#### Health Monitoring Service
-- Tracks device online/offline status
-- Monitors device metrics (battery, signal strength)
-- Provides real-time health dashboard
-- Generates alerts for device issues
+#### Edge Server
+Single Go binary that includes:
+- NATS server configured as leaf node
+- Automation engine for local execution
+- Device gateway with protocol bridges
+- Local cache for offline operation
 
-#### Management UI Service
-- Web-based management interface
-- Real-time device control and monitoring
-- Automation and scene management
-- WebSocket connection for live updates
-
-#### Configuration Service
-- Manages device configurations via KV store
-- Handles configuration updates and rollbacks
-- Provides versioned configuration history
-
-#### Automation Engine (Planned)
-- Subscribes to device events
-- Executes automation rules
-- Supports complex conditions and actions
-- Visual rule builder interface
-
-### 4. Integration Layer
-
-#### Home Assistant Bridge
-- Custom integration component
-- Bidirectional message translation
-- Entity mapping and state synchronization
-- WebSocket API support
-
-#### Protocol Bridges
-- MQTT to NATS bridge (implemented)
-- Zigbee2MQTT to NATS bridge (implemented)
-  - Automatic device type detection
-  - Bidirectional state synchronization
-  - Command translation
-- Z-Wave JS integration (planned)
-- Generic HTTP/REST bridge (planned)
+#### Protocol Support
+- **Native NATS** - Preferred for new devices
+- **MQTT Bridge** - For existing MQTT devices
+- **HTTP/REST** - For cloud services
+- **Zigbee/Z-Wave** - Via USB adapters
 
 ## Message Flow
 
 ### Device State Updates
 ```
-Device → NATS Subject → JetStream → Subscribers
-         home.devices.sensor.temp01.state
+Device → Edge Server → Cloud (via Leaf) → UI
+        ↓
+        Local Cache → Automation Engine
 ```
 
-### Command Execution
+### Device Commands
 ```
-HA/Client → Request → NATS → Device → Reply
-            home.devices.switch.light01.set
+UI → Cloud → Edge Server (via Leaf) → Device
 ```
 
-### Device Discovery
+### Automation Execution
 ```
-Device → Announce → Discovery Service → Registry → Subscribers
-         home.discovery.announce
+Device Event → Edge Server → Automation Engine → Device Command
+                           ↓
+                           Cloud (Status Update)
 ```
 
 ## Subject Hierarchy
 
+### Cloud Subjects
 ```
-home.
-├── devices.
-│   ├── {type}.
-│   │   └── {id}.
-│   │       ├── state      # Current state
-│   │       ├── set        # Commands
-│   │       ├── config     # Configuration
-│   │       └── health     # Health metrics
-├── discovery.
-│   ├── announce           # New device announcements
-│   └── remove            # Device removal
-├── events.
-│   ├── state_changed     # State change events
-│   ├── automation        # Automation triggers
-│   └── system           # System events
-└── config.
-    └── {entity_type}.
-        └── {id}          # Configuration data
+cloud.homes.{home-id}.devices.{device-id}.state
+cloud.homes.{home-id}.devices.{device-id}.command
+cloud.homes.{home-id}.automations.{auto-id}.status
+cloud.homes.{home-id}.events
+cloud.users.{user-id}.notifications
 ```
 
-## Data Persistence
-
-### JetStream Streams
-- **Device States**: Retains latest state for each device
-- **Command History**: Audit trail of all commands
-- **Event Stream**: Time-series event data
-
-### KV Buckets
-- **Device Registry**: Device metadata and capabilities
-- **Configurations**: Device and system configurations
-- **Automation Rules**: Rule definitions and state
-
-## Resilience Patterns
-
-### Connection Management
-- Automatic reconnection with exponential backoff
-- Connection pooling for high-throughput scenarios
-- Health checks and circuit breakers
-
-### Message Delivery
-- At-least-once delivery for critical messages
-- Request-reply timeout handling
-- Dead letter queues for failed messages
-
-### Failover Strategy
-- Local operation during cloud disconnection
-- Message buffering in JetStream
-- Automatic synchronization on reconnection
+### Local Subjects
+```
+home.devices.{device-id}.state
+home.devices.{device-id}.command
+home.devices.{device-id}.announce
+home.automations.{auto-id}.trigger
+home.events.{type}
+```
 
 ## Security Model
 
 ### Authentication
-- TLS encryption for all connections
-- User/password or token-based auth
-- Per-device credentials
+1. **Users** authenticate with Synadia Cloud (OAuth2/SAML)
+2. **Edge Servers** use JWT credentials to connect as leaf nodes
+3. **Devices** use per-device JWT credentials generated by provisioning service
 
 ### Authorization
-- Subject-based permissions
-- Role-based access control
-- Device-specific publish/subscribe rights
+```
+Device "kitchen-light" can:
+- Publish to: home.devices.kitchen-light.state
+- Subscribe to: home.devices.kitchen-light.command
 
-## Performance Considerations
+Edge Server can:
+- Publish to: cloud.homes.{home-id}.*
+- Subscribe to: cloud.homes.{home-id}.*
+```
 
-### Latency Optimization
-- Direct subject routing (no broker overhead)
-- Connection reuse
-- Local caching of frequently accessed data
+### Credential Flow
+1. User creates device in UI
+2. Cloud generates unique JWT for device
+3. JWT delivered to device via QR code/PIN
+4. Device connects with JWT credentials
+5. Automatic renewal before expiration
 
-### Throughput Scaling
-- Horizontal scaling via NATS clustering
-- Load distribution across leaf nodes
-- Efficient binary protocol
+## Scalability
 
-### Resource Usage
-- Minimal memory footprint (~20MB)
-- Low CPU usage
-- Efficient network utilization
+### Horizontal Scaling
+- Multiple edge servers per home (primary/backup)
+- Load balancing across edge servers
+- Automatic failover on failure
+
+### Multi-Home Support
+- Each home has unique ID
+- Users can manage multiple homes
+- Shared devices between homes
+- Cross-home automations
+
+## Offline Operation
+
+When internet is unavailable:
+1. Edge server continues running automations
+2. Local device control still works
+3. State changes are cached locally
+4. Sync with cloud when connection restored
+
+## Performance
+
+### Latency
+- Local device control: <1ms
+- Cloud UI updates: <100ms
+- Automation execution: <10ms
+
+### Throughput
+- 10,000+ messages/second per edge server
+- 100+ concurrent devices
+- Unlimited automations
 
 ## Deployment Options
 
-### Single Node
-- Suitable for most home installations
-- All components on single server
-- Simple configuration
+### Standard (Docker)
+```bash
+docker run -d --network host \
+  -v ~/nats.creds:/creds/cloud.creds:ro \
+  ghcr.io/calmera/nats-home-edge:latest
+```
 
-### Distributed
-- Separate NATS server
-- Microservices on different hosts
-- Better isolation and scaling
+### Kubernetes
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats-home-edge
+spec:
+  replicas: 2  # HA setup
+  template:
+    spec:
+      containers:
+      - name: edge
+        image: ghcr.io/calmera/nats-home-edge:latest
+```
 
-### High Availability
-- NATS clustering
-- Service redundancy
-- Automatic failover
+### Bare Metal
+```bash
+wget https://github.com/calmera/nats-home/releases/latest/edge
+chmod +x edge
+./edge --config edge.yaml
+```
 
-## Integration Points
+## Future Enhancements
 
-### Home Assistant
-- WebSocket API for real-time updates
-- REST API for device control
-- Entity registry integration
-- Service call translation
+### Planned Features
+- Voice assistant integration (Alexa, Google, Siri)
+- Machine learning for automation suggestions
+- Energy optimization algorithms
+- Presence detection using BLE/WiFi
+- Video streaming support
 
-### External Services
-- Webhook endpoints
-- REST API gateway
-- GraphQL interface (future)
-- Time-series database export
+### Community Requests
+- Home Assistant migration tool
+- Backup/restore functionality
+- Custom device drivers
+- Plugin system for extensions

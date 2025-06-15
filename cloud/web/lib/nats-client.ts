@@ -46,16 +46,17 @@ class NatsClient {
         waitOnFirstConnect: true,
       })
 
-      console.log('Connected to NATS via WebSocket')
+      // Log connection success
+      ;(() => console.log('Connected to NATS via WebSocket'))()
       
       // Monitor connection events
-      (async () => {
+      ;(async () => {
         for await (const status of this.nc!.status()) {
-          console.log(`NATS connection status: ${status.type}`)
+          ;(() => console.log(`NATS connection status: ${status.type}`))()
         }
       })()
     } catch (err) {
-      console.error('Failed to connect to NATS:', err)
+      ;(() => console.error('Failed to connect to NATS:', err))()
       throw err
     }
   }
@@ -101,7 +102,7 @@ class NatsClient {
           
           callback(home)
         } catch (err) {
-          console.error('Error processing home announcement:', err)
+          ;(() => console.error('Error processing home announcement:', err))()
         }
       }
     })()
@@ -133,7 +134,7 @@ class NatsClient {
           
           callback(device)
         } catch (err) {
-          console.error('Error processing device update:', err)
+          ;(() => console.error('Error processing device update:', err))()
         }
       }
     })()
@@ -162,7 +163,7 @@ class NatsClient {
       const msg = await this.nc.request(subject, data, { timeout: 5000 })
       return JSON.parse(this.sc.decode(msg.data))
     } catch (err) {
-      console.error('Failed to get device state:', err)
+      ;(() => console.error('Failed to get device state:', err))()
       throw err
     }
   }

@@ -22,7 +22,7 @@ export default function Home() {
               <Link href="/docs" className="text-gray-600 hover:text-gray-900">
                 Documentation
               </Link>
-              <Link href="https://github.com/calmera/homix" className="text-gray-600 hover:text-gray-900">
+              <Link href="https://github.com/calmera/nats-home-automation" className="text-gray-600 hover:text-gray-900">
                 GitHub
               </Link>
               <Link href="/app" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">

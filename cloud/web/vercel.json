@@ -9,10 +9,6 @@
     {
       "source": "/install.sh",
       "destination": "/api/installer"
-    },
-    {
-      "source": "/get",
-      "destination": "/api/installer"
     }
   ],
   "headers": [

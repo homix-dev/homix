@@ -211,17 +211,17 @@ Key metrics:
 - `edge_messages_total` - Messages processed
 - `edge_cloud_connected` - Cloud connection status
 
-### NATS Monitoring
+### Edge Server Monitoring
 
 ```bash
-# View server info
-curl http://localhost:8222/varz
+# View edge server status
+curl http://localhost:8222/healthz
 
-# View connections
-curl http://localhost:8222/connz
+# Monitor NATS messages (requires credentials)
+nats --server tls://connect.ngs.global --creds /creds/cloud.creds sub "home.>"
 
-# View routes
-curl http://localhost:8222/routez
+# View leaf node connection status
+curl http://localhost:8222/leafz
 ```
 
 ## Troubleshooting

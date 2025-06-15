@@ -32,13 +32,14 @@ echo
 
 # Test connection
 echo "Testing connection to Synadia Cloud..."
-if nats --server tls://connect.ngs.global --creds "$CREDS_FILE" server list > /dev/null 2>&1; then
+if nats --server tls://connect.ngs.global --creds "$CREDS_FILE" pub home.test.connection "test-$(date +%s)" > /dev/null 2>&1; then
     echo -e "${GREEN}✅ Successfully connected to Synadia Cloud!${NC}"
     echo
     
-    # Get account info
-    echo "Account Information:"
-    nats --server tls://connect.ngs.global --creds "$CREDS_FILE" account info 2>/dev/null || true
+    # Test basic functionality
+    echo "Testing basic NATS functionality..."
+    echo "✅ Connection established"
+    echo "✅ Publishing permissions verified"
     echo
     
     # Test publishing

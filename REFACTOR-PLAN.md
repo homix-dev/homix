@@ -1,7 +1,7 @@
 # Cloud-First Refactoring Plan
 
 ## Vision
-Transform NATS Home Automation into a cloud-first system where:
+Transform Nova into a cloud-first system where:
 - **Management happens in Synadia Cloud** (UI, configuration, monitoring)
 - **Execution happens at home** (automations, device control via leaf nodes)
 - **Security is paramount** (per-device JWT credentials, no shared secrets)
@@ -50,7 +50,7 @@ Transform NATS Home Automation into a cloud-first system where:
 
 3. **One-line setup**:
    ```bash
-   curl -sSL https://get.nats-home.io | sh
+   curl -sSL https://get.nova.sh | sh
    ```
 
 ### Phase 2: Move UI to Cloud
@@ -77,7 +77,7 @@ Transform NATS Home Automation into a cloud-first system where:
 ## New Repository Structure
 
 ```
-nats-home-automation/
+nova/
 ├── edge/                      # Everything that runs at home
 │   ├── Dockerfile            # Single container image
 │   ├── config.yaml           # Simple configuration

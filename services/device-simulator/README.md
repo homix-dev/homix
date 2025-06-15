@@ -1,6 +1,6 @@
-# NATS Device Simulator
+# Nova Device Simulator
 
-A web-based device simulator for testing NATS home automation without physical hardware.
+A web-based device simulator for testing Nova home automation without physical hardware.
 
 ## Features
 
@@ -28,10 +28,10 @@ go run main.go
 ### Docker
 ```bash
 # Build image
-docker build -t nats-device-simulator .
+docker build -t nova-device-simulator .
 
 # Run container
-docker run -p 8083:8083 -e NATS_URL=nats://home:changeme@localhost:4222 nats-device-simulator
+docker run -p 8083:8083 -e NATS_URL=nats://home:changeme@localhost:4222 nova-device-simulator
 ```
 
 ## Usage

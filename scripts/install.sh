@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# NATS Home Automation - Installer Script
+# Nova - Installer Script
 # This script sets up the edge server with minimal configuration
 
 set -e
@@ -15,15 +15,15 @@ NC='\033[0m' # No Color
 # ASCII Art Banner
 echo -e "${BLUE}"
 cat << "EOF"
- _   _    _  _____ ____    _   _                      
-| \ | |  / \|_   _/ ___|  | | | | ___  _ __ ___   ___ 
-|  \| | / _ \ | | \___ \  | |_| |/ _ \| '_ ` _ \ / _ \
-| |\  |/ ___ \| |  ___) | |  _  | (_) | | | | | |  __/
-|_| \_/_/   \_\_| |____/  |_| |_|\___/|_| |_| |_|\___|
-                                                       
+ _   _                   
+| \ | | _____   ____ _   
+|  \| |/ _ \ \ / / _` |  
+| |\  | (_) \ V / (_| |  
+|_| \_|\___/ \_/ \__,_|  
+                         
 EOF
 echo -e "${NC}"
-echo "Welcome to NATS Home Automation Setup!"
+echo "Welcome to Nova Setup!"
 echo "======================================"
 echo
 
@@ -131,7 +131,7 @@ configure_home() {
 setup_directories() {
     echo "Setting up directories..."
     
-    INSTALL_DIR="$HOME/nats-home"
+    INSTALL_DIR="$HOME/nova"
     mkdir -p "$INSTALL_DIR/data"
     mkdir -p "$INSTALL_DIR/config"
     
@@ -148,8 +148,8 @@ version: '3.8'
 
 services:
   edge:
-    image: ghcr.io/calmera/nats-home-edge:latest
-    container_name: nats-home-edge
+    image: ghcr.io/calmera/nova-edge:latest
+    container_name: nova-edge
     restart: unless-stopped
     network_mode: host
     
@@ -189,8 +189,8 @@ create_helpers() {
 #!/bin/bash
 cd "$(dirname "$0")"
 docker compose up -d
-echo "NATS Home Edge started!"
-echo "View logs: docker logs -f nats-home-edge"
+echo "Nova Edge started!"
+echo "View logs: docker logs -f nova-edge"
 EOF
     chmod +x "$INSTALL_DIR/start.sh"
     
@@ -199,7 +199,7 @@ EOF
 #!/bin/bash
 cd "$(dirname "$0")"
 docker compose down
-echo "NATS Home Edge stopped!"
+echo "Nova Edge stopped!"
 EOF
     chmod +x "$INSTALL_DIR/stop.sh"
     
@@ -209,14 +209,14 @@ EOF
 cd "$(dirname "$0")"
 docker compose pull
 docker compose up -d
-echo "NATS Home Edge updated!"
+echo "Nova Edge updated!"
 EOF
     chmod +x "$INSTALL_DIR/update.sh"
     
     # Logs script
     cat > "$INSTALL_DIR/logs.sh" << 'EOF'
 #!/bin/bash
-docker logs -f nats-home-edge
+docker logs -f nova-edge
 EOF
     chmod +x "$INSTALL_DIR/logs.sh"
     
@@ -226,7 +226,7 @@ EOF
 
 # Start the edge server
 start_edge() {
-    echo "Starting NATS Home Edge..."
+    echo "Starting Nova Edge..."
     
     cd "$INSTALL_DIR"
     $CONTAINER_TOOL compose up -d
@@ -235,11 +235,11 @@ start_edge() {
     sleep 5
     
     # Check if running
-    if $CONTAINER_TOOL ps | grep -q nats-home-edge; then
+    if $CONTAINER_TOOL ps | grep -q nova-edge; then
         echo -e "${GREEN}✓${NC} Edge server started successfully!"
     else
         echo -e "${RED}❌ Failed to start edge server${NC}"
-        echo "Check logs: $CONTAINER_TOOL logs nats-home-edge"
+        echo "Check logs: $CONTAINER_TOOL logs nova-edge"
         exit 1
     fi
     
@@ -257,7 +257,7 @@ print_success() {
     echo "Your home automation system is now running!"
     echo
     echo -e "${BLUE}Next steps:${NC}"
-    echo "1. Open https://home.nats.cloud in your browser"
+    echo "1. Open https://nova.cloud in your browser"
     echo "2. Log in with your Synadia Cloud account"
     echo "3. Your home '$HOME_NAME' should appear automatically"
     echo
@@ -268,9 +268,9 @@ print_success() {
     echo "  Update:     $INSTALL_DIR/update.sh"
     echo
     echo -e "${BLUE}Add your first device:${NC}"
-    echo "  ESPHome:    https://docs.nats-home.io/devices/esphome"
-    echo "  Zigbee:     https://docs.nats-home.io/devices/zigbee"
-    echo "  MQTT:       https://docs.nats-home.io/devices/mqtt"
+    echo "  ESPHome:    https://docs.nova.sh/devices/esphome"
+    echo "  Zigbee:     https://docs.nova.sh/devices/zigbee"
+    echo "  MQTT:       https://docs.nova.sh/devices/mqtt"
     echo
     echo "Happy automating! 🏠🤖"
 }

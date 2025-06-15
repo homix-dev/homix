@@ -1,6 +1,6 @@
 # Setup Guide
 
-This guide walks you through setting up NATS Home Automation with Synadia Cloud.
+This guide walks you through setting up Nova with Synadia Cloud.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ This guide walks you through setting up NATS Home Automation with Synadia Cloud.
 ### Option A: Interactive Installer (Recommended)
 
 ```bash
-curl -sSL https://get.nats-home.io | sh
+curl -sSL https://get.nova.sh | sh
 ```
 
 The installer will:
@@ -35,8 +35,8 @@ The installer will:
 1. **Download credentials** from Synadia Cloud
 2. **Create configuration**:
    ```bash
-   mkdir -p ~/nats-home/data
-   cd ~/nats-home
+   mkdir -p ~/nova/data
+   cd ~/nova
    ```
 
 3. **Create docker-compose.yml**:
@@ -44,8 +44,8 @@ The installer will:
    version: '3.8'
    services:
      edge:
-       image: ghcr.io/calmera/nats-home-edge:latest
-       container_name: nats-home-edge
+       image: ghcr.io/calmera/nova-edge:latest
+       container_name: nova-edge
        restart: unless-stopped
        network_mode: host
        volumes:
@@ -62,7 +62,7 @@ The installer will:
 
 ## Step 3: Access the UI
 
-1. Open [home.nats.cloud](https://home.nats.cloud)
+1. Open [nova.cloud](https://nova.cloud)
 2. Log in with your Synadia account
 3. Your home should appear automatically
 
@@ -74,11 +74,11 @@ docker run -d \
   --name test-light \
   --network host \
   -e DEVICE_ID=light-001 \
-  ghcr.io/calmera/nats-device-simulator:latest
+  ghcr.io/calmera/nova-device-simulator:latest
 ```
 
 ### Real ESP32 Device
-1. Flash the NATS firmware to your ESP32
+1. Flash the Nova firmware to your ESP32
 2. On first boot, device shows QR code
 3. Scan with your phone to provision
 4. Device automatically connects
@@ -143,7 +143,7 @@ volumes:
 
 Check logs:
 ```bash
-docker logs nats-home-edge
+docker logs nova-edge
 ```
 
 Common issues:
@@ -156,7 +156,7 @@ Common issues:
 1. Verify edge server is running
 2. Check cloud connection:
    ```bash
-   docker exec nats-home-edge nats-home status
+   docker exec nova-edge nova status
    ```
 3. Ensure credentials are valid
 
@@ -166,7 +166,7 @@ Common issues:
 2. Verify port 4222 is accessible
 3. Monitor device announcements:
    ```bash
-   docker exec nats-home-edge \
+   docker exec nova-edge \
      nats sub "home.devices.*.announce"
    ```
 
@@ -179,6 +179,6 @@ Common issues:
 
 ## Getting Help
 
-- **Discord**: [Join our community](https://discord.gg/nats-home)
-- **GitHub**: [Report issues](https://github.com/calmera/nats-home-automation/issues)
-- **Docs**: [Full documentation](https://docs.nats-home.io)
+- **Discord**: [Join our community](https://discord.gg/nova)
+- **GitHub**: [Report issues](https://github.com/calmera/nova/issues)
+- **Docs**: [Full documentation](https://docs.nova.sh)

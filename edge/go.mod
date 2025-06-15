@@ -1,4 +1,4 @@
-module github.com/calmera/nats-home-automation/edge
+module github.com/calmera/nova/edge
 
 go 1.23.0
 

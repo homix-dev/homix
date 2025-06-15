@@ -1,4 +1,4 @@
-# NATS Home Automation - Claude Assistant Guide
+# Nova - Claude Assistant Guide
 
 ## Project Overview
 This is a home automation system built on NATS messaging, providing a scalable, event-driven architecture for managing smart home devices and automations.

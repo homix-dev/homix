@@ -1,11 +1,11 @@
 version: '3'
 
-# Cloud-First NATS Home Automation Tasks
+# Cloud-First Nova Tasks
 # Simple tasks for the new architecture
 
 vars:
   CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
-  EDGE_IMAGE: ghcr.io/calmera/nats-home-edge:latest
+  EDGE_IMAGE: ghcr.io/calmera/nova-edge:latest
 
 tasks:
   default:

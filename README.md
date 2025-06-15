@@ -1,10 +1,10 @@
-# NATS Home Automation
+# Nova 🌟
 
-> The most secure, reliable, and easy-to-use open source home automation platform.
+> Home automation that shines - secure, reliable, and brilliantly simple.
 
-[![GitHub](https://img.shields.io/github/license/calmera/nats-home-automation)](LICENSE)
-[![Docker](https://img.shields.io/docker/pulls/calmera/nats-home-edge)](https://hub.docker.com/r/calmera/nats-home-edge)
-[![Discord](https://img.shields.io/discord/123456789)](https://discord.gg/nats-home)
+[![GitHub](https://img.shields.io/github/license/calmera/nova)](LICENSE)
+[![Docker](https://img.shields.io/docker/pulls/calmera/nova-edge)](https://hub.docker.com/r/calmera/nova-edge)
+[![Discord](https://img.shields.io/discord/123456789)](https://discord.gg/nova)
 
 ## 🚀 Get Started in 5 Minutes
 
@@ -15,12 +15,12 @@
 
 2. **Run the installer**
    ```bash
-   curl -sSL https://get.nats-home.io | sh
+   curl -sSL https://get.nova.sh | sh
    ```
 
 3. **Access the UI**
    ```
-   https://home.nats.cloud
+   https://nova.cloud
    ```
 
 That's it! Your home automation system is running.

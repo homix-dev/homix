@@ -1,0 +1,56 @@
+{
+  "scene": {
+    "id": "evening-lights",
+    "name": "Evening Lights",
+    "description": "Turn on living room and bedroom lights for evening",
+    "entities": [
+      {
+        "device_id": "sim-light-001",
+        "state": {
+          "state": "on",
+          "brightness": 70,
+          "color_temp": 3000
+        }
+      },
+      {
+        "device_id": "sim-light-002", 
+        "state": {
+          "state": "on",
+          "brightness": 50,
+          "color_temp": 2700
+        }
+      },
+      {
+        "device_id": "sim-switch-001",
+        "state": {
+          "state": "on"
+        }
+      }
+    ]
+  },
+  "automation": {
+    "id": "auto-evening-scene",
+    "name": "Activate Evening Scene at Sunset",
+    "description": "Automatically activate evening lights scene at sunset",
+    "trigger": {
+      "type": "sun",
+      "event": "sunset",
+      "offset": "-00:30:00"
+    },
+    "actions": [
+      {
+        "type": "activate_scene",
+        "scene_id": "evening-lights"
+      },
+      {
+        "type": "publish_event", 
+        "subject": "home.events.scene.activated",
+        "payload": {
+          "scene": "evening-lights",
+          "trigger": "sunset"
+        }
+      }
+    ],
+    "enabled": true
+  }
+}

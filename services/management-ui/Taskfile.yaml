@@ -21,9 +21,8 @@ tasks:
 
   build:
     desc: Build the service binary
-    dir: services/management-ui
     cmds:
-      - go build -o {{.BINARY}} main.go
+      - go build -o {{.BINARY}} .
     sources:
       - ./**/*.go
       - go.mod

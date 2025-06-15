@@ -209,7 +209,8 @@ const UI = {
         card.dataset.sceneId = scene.id;
         
         const icon = scene.icon || 'fa-palette';
-        const deviceCount = scene.devices ? scene.devices.length : 0;
+        // Handle both devices (frontend) and entities (backend) formats
+        const deviceCount = scene.devices ? scene.devices.length : (scene.entities ? scene.entities.length : 0);
         
         card.innerHTML = `
             <div class="scene-card-content" onclick="app.activateScene('${scene.id}')">

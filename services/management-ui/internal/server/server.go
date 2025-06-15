@@ -284,6 +284,11 @@ func (s *Server) startSubscriptions() error {
 		return err
 	}
 
+	// Subscribe to scene activation requests (from automations)
+	if _, err := s.natsConn.Subscribe("home.scenes.*.activate", s.handleSceneActivation); err != nil {
+		return err
+	}
+
 	s.logger.Info("Started NATS subscriptions")
 	return nil
 }
@@ -484,6 +489,80 @@ func (s *Server) broadcast(message interface{}) {
 			delete(s.wsClients, id)
 		}
 	}
+}
+
+// handleSceneActivation handles scene activation requests from NATS (e.g., from automations)
+func (s *Server) handleSceneActivation(msg *nats.Msg) {
+	// Extract scene ID from subject (home.scenes.{scene_id}.activate)
+	parts := strings.Split(msg.Subject, ".")
+	if len(parts) < 4 {
+		s.logger.Errorf("Invalid scene activation subject: %s", msg.Subject)
+		return
+	}
+	sceneID := parts[2]
+
+	s.mu.RLock()
+	scene, exists := s.scenes[sceneID]
+	s.mu.RUnlock()
+
+	if !exists {
+		s.logger.Errorf("Scene not found: %s", sceneID)
+		return
+	}
+
+	s.logger.Infof("Activating scene %s via NATS", sceneID)
+
+	// Activate scene by sending commands to all devices
+	for _, entity := range scene.Entities {
+		s.mu.RLock()
+		device, exists := s.devices[entity.DeviceID]
+		s.mu.RUnlock()
+
+		if !exists {
+			s.logger.Warnf("Device %s not found for scene %s", entity.DeviceID, sceneID)
+			continue
+		}
+
+		// Build command subject
+		subject := fmt.Sprintf("home.devices.%s.%s.command", device.Type, entity.DeviceID)
+		
+		// Build command payload
+		payload := map[string]interface{}{
+			"device_id": entity.DeviceID,
+			"scene_id":  sceneID,
+			"timestamp": time.Now().Unix(),
+		}
+		
+		// Add state values as commands
+		for k, v := range entity.State {
+			payload[k] = v
+		}
+
+		// Publish command
+		if data, err := json.Marshal(payload); err == nil {
+			s.natsConn.Publish(subject, data)
+			s.logger.Debugf("Sent command to device %s: %v", entity.DeviceID, payload)
+		}
+	}
+
+	// Publish scene activated event
+	event := map[string]interface{}{
+		"scene_id":  sceneID,
+		"timestamp": time.Now().Unix(),
+		"source":    "nats_activation",
+	}
+	if data, err := json.Marshal(event); err == nil {
+		s.natsConn.Publish("home.scenes.activated", data)
+	}
+
+	// Create event for tracking
+	s.storeEvent(&Event{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Type:      "scene_activated",
+		Source:    msg.Subject,
+		Data:      map[string]interface{}{"scene_id": sceneID},
+		Timestamp: time.Now(),
+	})
 }
 
 // publishEvent publishes a system event

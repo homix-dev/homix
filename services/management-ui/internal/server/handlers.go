@@ -460,18 +460,47 @@ func (s *Server) handleGetScenes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateScene(w http.ResponseWriter, r *http.Request) {
-	var scene Scene
-	if err := json.NewDecoder(r.Body).Decode(&scene); err != nil {
+	// Parse request body as raw JSON to handle frontend format
+	var rawData map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&rawData); err != nil {
 		s.sendError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	// Generate ID if not provided
-	if scene.ID == "" {
-		scene.ID = fmt.Sprintf("scene_%d", time.Now().UnixNano())
+	// Create scene with proper structure
+	scene := Scene{
+		ID:          fmt.Sprintf("scene_%d", time.Now().UnixNano()),
+		Name:        getString(rawData, "name"),
+		Description: getString(rawData, "description"),
+		Icon:        getString(rawData, "icon"),
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
-	scene.CreatedAt = time.Now()
-	scene.UpdatedAt = time.Now()
+
+	// Handle both "devices" (frontend) and "entities" (backend) fields
+	if devices, ok := rawData["devices"].([]interface{}); ok {
+		// Frontend format: convert devices to entities
+		for _, d := range devices {
+			if device, ok := d.(map[string]interface{}); ok {
+				entity := SceneEntity{
+					DeviceID: getString(device, "device_id"),
+					State:    getMap(device, "state"),
+				}
+				scene.Entities = append(scene.Entities, entity)
+			}
+		}
+	} else if entities, ok := rawData["entities"].([]interface{}); ok {
+		// Backend format: use entities directly
+		for _, e := range entities {
+			if entity, ok := e.(map[string]interface{}); ok {
+				sceneEntity := SceneEntity{
+					DeviceID: getString(entity, "device_id"),
+					State:    getMap(entity, "state"),
+				}
+				scene.Entities = append(scene.Entities, sceneEntity)
+			}
+		}
+	}
 
 	s.mu.Lock()
 	s.scenes[scene.ID] = &scene
@@ -510,8 +539,9 @@ func (s *Server) handleUpdateScene(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	sceneID := vars["id"]
 
-	var update Scene
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+	// Parse request body as raw JSON to handle frontend format
+	var rawData map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&rawData); err != nil {
 		s.sendError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -525,11 +555,39 @@ func (s *Server) handleUpdateScene(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update fields
-	scene.Name = update.Name
-	scene.Description = update.Description
-	scene.Icon = update.Icon
-	scene.Entities = update.Entities
+	scene.Name = getString(rawData, "name")
+	scene.Description = getString(rawData, "description")
+	scene.Icon = getString(rawData, "icon")
 	scene.UpdatedAt = time.Now()
+
+	// Clear existing entities
+	scene.Entities = []SceneEntity{}
+
+	// Handle both "devices" (frontend) and "entities" (backend) fields
+	if devices, ok := rawData["devices"].([]interface{}); ok {
+		// Frontend format: convert devices to entities
+		for _, d := range devices {
+			if device, ok := d.(map[string]interface{}); ok {
+				entity := SceneEntity{
+					DeviceID: getString(device, "device_id"),
+					State:    getMap(device, "state"),
+				}
+				scene.Entities = append(scene.Entities, entity)
+			}
+		}
+	} else if entities, ok := rawData["entities"].([]interface{}); ok {
+		// Backend format: use entities directly
+		for _, e := range entities {
+			if entity, ok := e.(map[string]interface{}); ok {
+				sceneEntity := SceneEntity{
+					DeviceID: getString(entity, "device_id"),
+					State:    getMap(entity, "state"),
+				}
+				scene.Entities = append(scene.Entities, sceneEntity)
+			}
+		}
+	}
+	
 	s.mu.Unlock()
 
 	// Save to KV store
@@ -1055,4 +1113,19 @@ func (s *Server) publishAutomationEvent(eventType, automationID string) {
 	if data, err := json.Marshal(event); err == nil {
 		s.natsConn.Publish("home.automations.events", data)
 	}
+}
+
+// Helper functions for parsing JSON data
+func getString(data map[string]interface{}, key string) string {
+	if val, ok := data[key].(string); ok {
+		return val
+	}
+	return ""
+}
+
+func getMap(data map[string]interface{}, key string) map[string]interface{} {
+	if val, ok := data[key].(map[string]interface{}); ok {
+		return val
+	}
+	return make(map[string]interface{})
 }

@@ -30,11 +30,10 @@ jobs:
           cd cloud/web
           npm install
       
-      # Skip tests for now since no test script is defined
-      # - name: Run tests
-      #   run: |
-      #     cd cloud/web
-      #     npm test -- --passWithNoTests
+      - name: Run tests
+        run: |
+          cd cloud/web
+          npm test -- --passWithNoTests
       
       - name: Build
         run: |

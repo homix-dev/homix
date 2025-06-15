@@ -1,358 +1,184 @@
-# NATS Home Automation Setup Guide
+# Setup Guide
 
-This guide walks you through setting up the NATS Home Automation system from scratch.
+This guide walks you through setting up NATS Home Automation with Synadia Cloud.
 
 ## Prerequisites
 
-- Linux/macOS/Windows with Docker support
-- NATS Server 2.10+ or Synadia Cloud account
-- Home Assistant 2024.6+ (if using HA integration)
-- ESPHome 2024.6+ (if using ESP devices)
-- Basic networking knowledge
+- Docker or Podman installed
+- Internet connection for initial setup
+- 5 minutes of your time
 
-## Phase 1: NATS Infrastructure Setup
+## Step 1: Create Synadia Cloud Account
 
-### Quick Start (Recommended)
+1. Visit [app.ngs.global](https://app.ngs.global)
+2. Sign up for a free account
+3. Create a new context called "home"
+4. Download your credentials file
 
-Using Task automation:
+## Step 2: Run the Installer
+
+### Option A: Interactive Installer (Recommended)
+
 ```bash
-# Check dependencies
-task check-deps
-
-# Setup and start NATS in development mode
-task setup-dev
-
-# Verify connection
-task infra:test-connection
+curl -sSL https://get.nats-home.io | sh
 ```
 
-### Option A: Local NATS Server (Manual)
+The installer will:
+- Check prerequisites
+- Help configure your credentials
+- Set up your home name and location
+- Start the edge server
+- Provide next steps
 
-1. **Using Task**:
+### Option B: Manual Setup
+
+1. **Download credentials** from Synadia Cloud
+2. **Create configuration**:
+   ```bash
+   mkdir -p ~/nats-home/data
+   cd ~/nats-home
+   ```
+
+3. **Create docker-compose.yml**:
+   ```yaml
+   version: '3.8'
+   services:
+     edge:
+       image: ghcr.io/calmera/nats-home-edge:latest
+       container_name: nats-home-edge
+       restart: unless-stopped
+       network_mode: host
+       volumes:
+         - ~/.synadia/NGS-Home-user.creds:/creds/cloud.creds:ro
+         - ./data:/data
+       environment:
+         - HOME_NAME=My Home
+   ```
+
+4. **Start the edge server**:
+   ```bash
+   docker compose up -d
+   ```
+
+## Step 3: Access the UI
+
+1. Open [home.nats.cloud](https://home.nats.cloud)
+2. Log in with your Synadia account
+3. Your home should appear automatically
+
+## Step 4: Add Your First Device
+
+### Test Device (Simulator)
 ```bash
-# Start NATS in development mode (no Synadia Cloud needed)
-task infra:start-dev
-
-# Or start with Synadia Cloud connection
-task infra:start
-```
-
-2. **Using Docker directly**:
-```bash
-# Create a directory for NATS data
-mkdir -p ~/nats-data
-
-# Run NATS server with JetStream enabled
 docker run -d \
-  --name nats-server \
-  -p 4222:4222 \
-  -p 8222:8222 \
-  -v ~/nats-data:/data \
-  nats:latest \
-  -js \
-  -sd /data
+  --name test-light \
+  --network host \
+  -e DEVICE_ID=light-001 \
+  ghcr.io/calmera/nats-device-simulator:latest
 ```
 
-2. **Using Native Binary**:
-```bash
-# Download NATS server
-curl -L https://github.com/nats-io/nats-server/releases/latest/download/nats-server-linux-amd64.zip -o nats-server.zip
-unzip nats-server.zip
+### Real ESP32 Device
+1. Flash the NATS firmware to your ESP32
+2. On first boot, device shows QR code
+3. Scan with your phone to provision
+4. Device automatically connects
 
-# Create configuration file
-cat > nats-server.conf <<EOF
-port: 4222
-http_port: 8222
+## Configuration Options
 
-jetstream {
-  store_dir: "./nats-data"
-  max_memory_store: 1GB
-  max_file_store: 10GB
-}
+### Environment Variables
 
-authorization {
-  users: [
-    {user: "admin", password: "changeme", permissions: {publish: ">", subscribe: ">"}}
-    {user: "device", password: "devicepass", permissions: {
-      publish: ["home.devices.>", "home.discovery.>"]
-      subscribe: ["home.devices.>", "home.config.>"]
-    }}
-  ]
-}
-EOF
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HOME_NAME` | Display name for your home | My Home |
+| `HOME_LAT` | Latitude for sunrise/sunset | - |
+| `HOME_LON` | Longitude for sunrise/sunset | - |
+| `HOME_TZ` | Timezone | America/New_York |
+| `LOG_LEVEL` | Logging verbosity | info |
 
-# Run NATS server
-./nats-server -c nats-server.conf
-```
+### Custom Configuration File
 
-### Option B: Synadia Cloud Setup
-
-1. **Sign up for Synadia Cloud**:
-   - Visit https://cloud.synadia.com
-   - Create a free account
-   - Create a new NATS cluster
-
-2. **Download credentials**:
-   - Generate user credentials
-   - Download the `.creds` file
-   - Save to `~/.nats/synadia.creds`
-
-3. **Configure leaf node** (optional for edge deployment):
-```bash
-# Create leaf node configuration
-cat > leaf-node.conf <<EOF
-port: 4222
-
-leaf_nodes {
-  remotes: [
-    {
-      url: "nats-leaf://connect.ngs.global"
-      credentials: "/home/user/.nats/synadia.creds"
-    }
-  ]
-}
-
-jetstream {
-  store_dir: "./leaf-data"
-  domain: "home"
-}
-EOF
-
-# Run leaf node
-nats-server -c leaf-node.conf
-```
-
-### Verify NATS Installation
-
-```bash
-# Install NATS CLI
-curl -L https://github.com/nats-io/natscli/releases/latest/download/nats-linux-amd64.zip -o nats-cli.zip
-unzip nats-cli.zip
-sudo mv nats /usr/local/bin/
-
-# Test connection
-nats server check connection
-
-# Enable JetStream
-nats stream add DEVICES --subjects "home.devices.>" --storage file --retention limits --max-age 7d
-
-# Test pub/sub
-nats pub test.subject "Hello NATS"
-nats sub test.subject
-```
-
-## Phase 2: Core Services Setup
-
-### Using Task (Recommended)
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/nats-home-automation.git
-cd nats-home-automation
-
-# Run all services in development mode
-task dev
-
-# Or run services individually
-task services:discovery:run
-```
-
-### Manual Setup
-
-1. **Build services**:
-```bash
-task services:build
-```
-
-2. **Run discovery service**:
-```bash
-task services:discovery:run
-```
-
-### Install Services
-
-To install services globally:
-```bash
-# Install binaries to /usr/local/bin
-task install
-
-# Install as system service (Linux)
-task services:discovery:install-service
-
-# Install as launchd service (macOS)
-task services:discovery:install-service-macos
-```
-
-## Phase 3: ESPHome Device Setup
-
-### Install ESPHome
-
-```bash
-# Using pip
-pip install esphome
-
-# Or using Docker
-docker pull esphome/esphome
-```
-
-### Create Device Configuration
-
-1. **Basic ESP32 device**:
+Create `config/edge.yaml`:
 ```yaml
-# temperature-sensor.yaml
-esphome:
-  name: temp-sensor-01
-  platform: ESP32
-  board: esp32dev
-
-wifi:
-  ssid: "YourWiFi"
-  password: "YourPassword"
-
-# Enable logging
-logger:
-
-# Enable OTA updates
-ota:
-  password: "otapassword"
-
-# NATS configuration
-external_components:
-  - source:
-      type: local
-      path: ../../esphome-components
-    components: [ nats_client, nats_sensor ]
-
-nats_client:
-  id: nats
-  server: "192.168.1.100"
-  port: 4222
-  username: "device"
-  password: "devicepass"
+cloud:
+  url: tls://connect.ngs.global
+  credentials: /creds/cloud.creds
   
-# Sensors
-sensor:
-  - platform: dht22
-    pin: GPIO4
-    temperature:
-      name: "Room Temperature"
-      id: room_temp
-    humidity:
-      name: "Room Humidity"
-      id: room_humidity
-    update_interval: 30s
+home:
+  name: "Beach House"
+  location:
+    latitude: 25.7617
+    longitude: -80.1918
+    timezone: America/Miami
 
-  - platform: nats_sensor
-    name: "Room Temperature NATS"
-    sensor_id: room_temp
-    subject: "home.devices.sensor.temp01.state"
-    qos: 1
+gateway:
+  bridges:
+    mqtt:
+      enabled: true
+      port: 1883
+    zigbee:
+      enabled: true
+      device: /dev/ttyUSB0
 ```
 
-2. **Compile and upload**:
-```bash
-esphome compile temperature-sensor.yaml
-esphome upload temperature-sensor.yaml
-```
-
-## Phase 4: Home Assistant Integration
-
-### Install NATS Bridge Integration
-
-1. **Copy integration files**:
-```bash
-cp -r ha-integration/custom_components/nats_bridge ~/.homeassistant/custom_components/
-```
-
-2. **Add to configuration.yaml**:
+Mount in docker-compose.yml:
 ```yaml
-# configuration.yaml
-nats_bridge:
-  server: "localhost"
-  port: 4222
-  username: "admin"
-  password: "changeme"
-  discovery_prefix: "home.discovery"
-  device_prefix: "home.devices"
+volumes:
+  - ./config/edge.yaml:/config/edge.yaml:ro
 ```
 
-3. **Restart Home Assistant**:
-```bash
-ha core restart
-```
+## Ports Used
 
-### Verify Integration
-
-1. Check Home Assistant logs for NATS connection
-2. Devices should appear automatically when they announce
-3. Test device control from HA interface
-
-## Phase 5: Protocol Bridges
-
-### MQTT to NATS Bridge
-
-```bash
-cd bridges/mqtt
-docker build -t mqtt-nats-bridge .
-docker run -d \
-  --name mqtt-bridge \
-  -e NATS_URL=nats://localhost:4222 \
-  -e MQTT_URL=tcp://localhost:1883 \
-  mqtt-nats-bridge
-```
-
-### Zigbee2MQTT Integration
-
-1. **Configure Zigbee2MQTT**:
-```yaml
-# zigbee2mqtt configuration.yaml
-mqtt:
-  base_topic: zigbee2mqtt
-  server: 'mqtt://localhost:1883'
-  
-advanced:
-  output: json
-```
-
-2. **The MQTT bridge will automatically translate Zigbee messages to NATS**
+| Port | Service | Description |
+|------|---------|-------------|
+| 4222 | NATS | Local device connections |
+| 8222 | HTTP | NATS monitoring endpoint |
+| 9222 | WebSocket | Real-time updates |
+| 1883 | MQTT | MQTT bridge (optional) |
+| 8080 | HTTP | REST API (optional) |
+| 2112 | HTTP | Prometheus metrics |
 
 ## Troubleshooting
 
-### Connection Issues
+### Edge Server Won't Start
 
-1. **Check NATS server status**:
+Check logs:
 ```bash
-nats server info
+docker logs nats-home-edge
 ```
 
-2. **Monitor NATS traffic**:
-```bash
-nats sub "home.>"
-```
+Common issues:
+- Invalid credentials file
+- Port 4222 already in use
+- Network connectivity issues
 
-3. **Check device logs**:
-```bash
-esphome logs temperature-sensor.yaml
-```
+### Can't See Home in UI
 
-### Common Problems
+1. Verify edge server is running
+2. Check cloud connection:
+   ```bash
+   docker exec nats-home-edge nats-home status
+   ```
+3. Ensure credentials are valid
 
-- **Devices not appearing**: Check discovery service is running
-- **Commands not working**: Verify subject permissions
-- **Connection drops**: Check network stability and firewall rules
+### Devices Not Connecting
+
+1. Check device is on same network
+2. Verify port 4222 is accessible
+3. Monitor device announcements:
+   ```bash
+   docker exec nats-home-edge \
+     nats sub "home.devices.*.announce"
+   ```
 
 ## Next Steps
 
-- Set up monitoring dashboard
-- Configure automation rules
-- Add more devices
-- Enable cloud synchronization
-- Set up backup procedures
+- [Add more devices](devices/README.md)
+- [Create your first automation](automations/README.md)
+- [Set up energy monitoring](energy/README.md)
+- [Configure multi-home setup](multi-home/README.md)
 
-## Security Recommendations
+## Getting Help
 
-1. Change all default passwords
-2. Use TLS for remote connections
-3. Implement proper user permissions
-4. Regular security updates
-5. Monitor access logs
+- **Discord**: [Join our community](https://discord.gg/nats-home)
+- **GitHub**: [Report issues](https://github.com/calmera/nats-home-automation/issues)
+- **Docs**: [Full documentation](https://docs.nats-home.io)

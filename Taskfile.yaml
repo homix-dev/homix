@@ -1,19 +1,11 @@
 version: '3'
 
-vars:
-  NATS_SERVER: "nats://localhost:4222"
-  NATS_USER: "home"
-  NATS_PASS: "changeme"
-  # Prefer podman if available, fallback to docker
-  CONTAINER_TOOL: '{{default "podman" .CONTAINER_TOOL}}'
+# Cloud-First NATS Home Automation Tasks
+# Simple tasks for the new architecture
 
-includes:
-  services: ./services/Taskfile.yaml
-  tools: ./tools/Taskfile.yaml
-  bridges: ./bridges/Taskfile.yaml
-  esphome: ./esphome-components/Taskfile.yaml
-  infra: ./infrastructure/Taskfile.yaml
-  # cleanup: ./Taskfile.cleanup.yaml
+vars:
+  CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
+  EDGE_IMAGE: ghcr.io/calmera/nats-home-edge:latest
 
 tasks:
   default:
@@ -21,417 +13,158 @@ tasks:
     cmds:
       - task --list
 
-  # === SETUP TASKS ===
-  setup:
-    desc: Complete project setup with all dependencies
+  # === QUICK START ===
+  install:
+    desc: Run interactive installer for edge server
     cmds:
-      - task: infra:setup
-      - task: deps
+      - ./scripts/install.sh
+
+  test-cloud:
+    desc: Test your Synadia Cloud connection
+    cmds:
+      - ./scripts/test-cloud-connection.sh {{.CREDS}}
+    vars:
+      CREDS: '{{default "~/.synadia/NGS-Home-*.creds" .CREDS}}'
+
+  # === EDGE SERVER ===
+  edge:run:
+    desc: Run edge server locally (development)
+    dir: edge
+    cmds:
+      - go run ./cmd/edge
+    env:
+      SYNADIA_CREDS: '{{.SYNADIA_CREDS}}'
+      HOME_NAME: '{{default "Dev Home" .HOME_NAME}}'
+
+  edge:build:
+    desc: Build edge server Docker image
+    dir: edge
+    cmds:
+      - '{{.CONTAINER_TOOL}} build -t {{.EDGE_IMAGE}} .'
+
+  edge:push:
+    desc: Push edge server image to registry
+    cmds:
+      - '{{.CONTAINER_TOOL}} push {{.EDGE_IMAGE}}'
+
+  edge:start:
+    desc: Start edge server with Docker/Podman
+    cmds:
       - |
-        echo "✅ Setup complete!"
-        echo ""
-        echo "Quick start options:"
-        echo "  - 'task dev' - Start ALL services in tmux (recommended!)"
-        echo "  - 'task up' - Start with Docker Compose"
-        echo "  - 'task start' - Start NATS only + show manual instructions"
+        {{.CONTAINER_TOOL}} run -d \
+          --name nats-home-edge \
+          --network host \
+          -v {{.CREDS}}:/creds/cloud.creds:ro \
+          -e HOME_NAME="{{.HOME_NAME}}" \
+          {{.EDGE_IMAGE}}
+    vars:
+      CREDS: '{{default "~/.synadia/NGS-Home-daan.creds" .SYNADIA_CREDS}}'
+      HOME_NAME: '{{default "My Home" .HOME_NAME}}'
 
-  deps:
-    desc: Install all project dependencies
+  edge:stop:
+    desc: Stop edge server
     cmds:
-      - echo "Installing dependencies..."
-      - go install github.com/nats-io/natscli/nats@latest || echo "⚠️  Failed to install NATS CLI (Go required)"
-      - cd services/discovery && go mod download || echo "⚠️  Failed to download Go dependencies"
-      - cd services/management-ui && go mod download || echo "⚠️  Failed to download Go dependencies"
-      - cd services/health-monitor && go mod download || echo "⚠️  Failed to download Go dependencies"
-      - cd services/device-simulator && go mod download || echo "⚠️  Failed to download Go dependencies"
-      - echo "✅ Dependencies installed"
+      - '{{.CONTAINER_TOOL}} stop nats-home-edge'
+      - '{{.CONTAINER_TOOL}} rm nats-home-edge'
 
-  # === START/STOP TASKS ===
-  start:
-    desc: Start NATS server and show instructions for starting other services
+  edge:logs:
+    desc: View edge server logs
     cmds:
-      - task: infra:start-dev
-      - |
-        echo ""
-        echo "🚀 NATS is running!"
-        echo ""
-        echo "To start all services, run these commands in separate terminals:"
-        echo ""
-        echo "Terminal 1 - Discovery Service:"
-        echo "  cd services/discovery && go run main.go"
-        echo ""
-        echo "Terminal 2 - Health Monitor:"
-        echo "  cd services/health-monitor && go run main.go"
-        echo ""
-        echo "Terminal 3 - Management UI:"
-        echo "  cd services/management-ui && go run main.go"
-        echo ""
-        echo "Terminal 4 - Device Simulator:"
-        echo "  cd services/device-simulator && go run main.go"
-        echo ""
-        echo "Or use one of these alternatives:"
-        echo "  • 'task dev' - Run all in tmux (recommended)"
-        echo "  • 'task up' - Run with Docker Compose"
-        echo ""
-        echo "Services will be available at:"
-        echo "  • Management UI: http://localhost:8081 (admin/admin)"
-        echo "  • Health Monitor: http://localhost:8082"
-        echo "  • Device Simulator: http://localhost:8083"
-        echo "  • NATS Monitor: http://localhost:8222"
+      - '{{.CONTAINER_TOOL}} logs -f nats-home-edge'
 
-  stop:
-    desc: Stop all services
-    cmds:
-      # - task: cleanup:cleanup
-
+  # === DEVELOPMENT ===
   dev:
-    desc: Start ALL services in tmux sessions (recommended - one command setup!)
+    desc: Run edge server in development mode with hot reload
+    dir: edge
     cmds:
-      - task: infra:start-dev
-      - |
-        if ! command -v tmux &> /dev/null; then
-          echo "❌ tmux not installed. Install with:"
-          echo "  macOS: brew install tmux"
-          echo "  Ubuntu: sudo apt install tmux"
-          exit 1
-        fi
-        
-        # Kill any existing session
-        tmux kill-session -t nats-ha 2>/dev/null || true
-        
-        # Create new session
-        tmux new-session -d -s nats-ha -n discovery
-        tmux send-keys -t nats-ha:discovery "cd services/discovery && go run main.go" C-m
-        
-        tmux new-window -t nats-ha -n health-monitor
-        tmux send-keys -t nats-ha:health-monitor "cd services/health-monitor && go run main.go" C-m
-        
-        tmux new-window -t nats-ha -n management-ui
-        tmux send-keys -t nats-ha:management-ui "cd services/management-ui && go run main.go" C-m
-        
-        tmux new-window -t nats-ha -n device-simulator
-        tmux send-keys -t nats-ha:device-simulator "cd services/device-simulator && go run main.go" C-m
-        
-        echo "🚀 All services started in tmux session 'nats-ha'"
-        echo ""
-        echo "Available at:"
-        echo "  • Management UI (Go): http://localhost:8081 (admin/admin)"
-        echo "  • Management UI (React): http://localhost:3000"
-        echo "  • Health Monitor: http://localhost:8082"
-        echo "  • Device Simulator: http://localhost:8083"
-        echo "  • NATS Monitor: http://localhost:8222"
-        echo ""
-        echo "To attach to session: tmux attach -t nats-ha"
-        echo "To switch windows: Ctrl+b then 0/1/2/3/4/5"
-        echo "To detach: Ctrl+b then d"
+      - air -c .air.toml
+    env:
+      SYNADIA_CREDS: '{{default "~/.synadia/NGS-Home-daan.creds" .SYNADIA_CREDS}}'
+      HOME_NAME: '{{default "Dev Home" .HOME_NAME}}'
+      LOG_LEVEL: debug
 
-  # === DOCKER COMPOSE TASKS ===
-  up:
-    desc: Start all services with containers (builds images if needed)
-    cmds:
-      # - task: cleanup:validate
-      # - task: cleanup:cleanup:containers
-      - |
-        if [ ! -f .env ]; then
-          cp .env.example .env
-          echo "Created .env file from template"
-        fi
-      - |
-        echo "Checking for required images..."
-        MISSING_IMAGES=0
-        for img in nats-discovery nats-management-ui nats-health-monitor; do
-          if ! {{.CONTAINER_TOOL}} image exists $img:latest; then
-            echo "⚠️  Image $img:latest not found"
-            MISSING_IMAGES=1
-          fi
-        done
-        if [ $MISSING_IMAGES -eq 1 ]; then
-          echo "Building missing images..."
-          task build-quick
-        fi
-      - |
-        echo "Starting services with {{.CONTAINER_TOOL}}..."
-        {{.CONTAINER_TOOL}} compose up -d
-      # - task: cleanup:wait-healthy
-      # - task: cleanup:show-status
-
-  up:cloud:
-    desc: Start services with JWT authentication (cloud-ready mode)
-    cmds:
-      - |
-        if [ ! -f .env ]; then
-          cp .env.example .env
-          echo "Created .env file from template"
-        fi
-      - |
-        if [ ! -f creds/management-ui.creds ]; then
-          echo "⚠️  JWT credentials not found. Run setup first:"
-          echo "   cd infrastructure && ./setup-synadia-cloud.sh"
-          exit 1
-        fi
-      - echo "Starting services with JWT auth using {{.CONTAINER_TOOL}}..."
-      - '{{.CONTAINER_TOOL}} compose -f docker-compose.yml -f docker-compose.cloud.yml up -d'
-      - |
-        echo ""
-        echo "✅ Services started with JWT authentication!"
-        echo ""
-        echo "Test with: nats --creds creds/management-ui.creds pub test hello"
-
-  up:nats:
-    desc: Start only NATS server in container (avoids build issues)
-    cmds:
-      # - task: cleanup:validate
-      # - task: cleanup:cleanup:containers
-      - |
-        echo "Starting NATS server with {{.CONTAINER_TOOL}}..."
-        {{.CONTAINER_TOOL}} compose -f docker-compose.nats-only.yml up -d
-      - |
-        echo "Waiting for NATS to be healthy..."
-        sleep 5
-      - |
-        echo ""
-        echo "✅ NATS server is running!"
-        echo ""
-        echo "Now start the other services locally:"
-        echo "  task services:simulator:run  # Device Simulator"
-        echo "  task services:ui:run         # Management UI" 
-        echo "  task services:health:run     # Health Monitor"
-        echo ""
-        echo "Or use: ./run-local.sh"
-
-  up:with-simulator:
-    desc: Start all services including device simulator (requires local image)
-    cmds:
-      # - task: cleanup:validate
-      # - task: cleanup:cleanup:containers
-      - |
-        if [ ! -f .env ]; then
-          cp .env.example .env
-          echo "Created .env file from template"
-        fi
-      - |
-        echo "Starting all services including device simulator..."
-        {{.CONTAINER_TOOL}} compose --profile full up -d
-      # - task: cleanup:wait-healthy
-      # - task: cleanup:show-status
-
-  up:full:
-    desc: Start all services including Home Assistant
-    cmds:
-      - |
-        if [ ! -f .env ]; then
-          cp .env.example .env
-        fi
-        mkdir -p homeassistant-config
-      - '{{.CONTAINER_TOOL}} compose -f docker-compose.full.yml up -d'
-      - |
-        echo "🚀 Full stack starting..."
-        echo ""
-        echo "Available at:"
-        echo "  • Home Assistant: http://localhost:8123"
-        echo "  • Management UI: http://localhost:8081 (admin/admin)"
-        echo "  • Health Monitor: http://localhost:8082"
-        echo "  • NATS Monitor: http://localhost:8222"
-
-  up:prod:
-    desc: Start services using pre-built GHCR images
-    cmds:
-      - |
-        if [ ! -f .env ]; then
-          cp .env.example .env
-          echo "Created .env file from template"
-        fi
-      - '{{.CONTAINER_TOOL}} compose -f docker-compose.prod.yml up -d'
-      - |
-        echo "🚀 Production services starting with GHCR images..."
-        echo ""
-        echo "Available at:"
-        echo "  • Management UI: http://localhost:8081 (admin/admin)"
-        echo "  • Health Monitor: http://localhost:8082"
-        echo "  • NATS Monitor: http://localhost:8222"
-        echo ""
-        echo "Using images from: ghcr.io/$${GITHUB_REPOSITORY:-calmera/nats-home-automation}"
-
-  down:
-    desc: Stop all containers and clean up
-    cmds:
-      # - task: cleanup:cleanup
-
-  logs:
-    desc: View Docker Compose logs
-    cmds:
-      - '{{.CONTAINER_TOOL}} compose logs -f {{.CLI_ARGS}}'
-
-  build:
-    desc: Build all container images
-    cmds:
-      - echo "Building container images..."
-      - '{{.CONTAINER_TOOL}} compose build'
-      - echo "✅ Container images built successfully!"
-      - echo ""
-      - echo "To build local Go binaries, run:"
-      - echo "  task services:build"
-
-  build-all:
-    desc: Alias for build task
-    aliases: [rebuild]
-    cmds:
-      - task: build
-
-  build-quick:
-    desc: Build only container images (skip local artifacts)
-    cmds:
-      - '{{.CONTAINER_TOOL}} compose build'
-
-  build-local:
-    desc: Build local Go binaries
-    cmds:
-      - |
-        echo "Building local Go binaries..."
-        cd services/discovery && go build -o bin/discovery-service .
-        cd services/health-monitor && go build -o build/health-monitor .
-        cd services/management-ui && go build -o nats-home-management-ui .
-        cd services/device-simulator && go build -o bin/device-simulator .
-        echo "✅ Local binaries built successfully!"
-
-  # === MONITORING TASKS ===
-  monitor:
-    desc: Monitor all NATS subjects
-    cmds:
-      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} sub "home.>"
-
-  monitor:devices:
-    desc: Monitor device states and events
-    cmds:
-      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} sub "home.devices.>"
-
-  status:
-    desc: Check status of all services
-    cmds:
-      # - task: cleanup:show-status
-
-  # === TESTING TASKS ===
   test:
     desc: Run all tests
     cmds:
-      - cd tests && task default
+      - task: test:edge
+      - task: test:integration
 
-  test:connection:
-    desc: Test NATS connection and messaging
+  test:edge:
+    desc: Run edge server tests
+    dir: edge
+    cmds:
+      - go test -v ./...
+
+  test:integration:
+    desc: Run integration tests
+    cmds:
+      - echo "TODO: Add integration tests"
+
+  # === CLOUD UI ===
+  ui:dev:
+    desc: Run cloud UI in development mode
+    dir: cloud/web-ui
+    cmds:
+      - npm run dev
+
+  ui:build:
+    desc: Build cloud UI for production
+    dir: cloud/web-ui
+    cmds:
+      - npm run build
+
+  ui:deploy:
+    desc: Deploy cloud UI to Vercel
+    dir: cloud/web-ui
+    cmds:
+      - vercel --prod
+
+  # === UTILITIES ===
+  monitor:
+    desc: Monitor NATS messages
+    cmds:
+      - nats --server {{.SERVER}} --creds {{.CREDS}} sub "{{.SUBJECT}}"
     vars:
-      NATS_CMD: 'nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}}'
-    cmds:
-      - echo "Testing NATS connection..."
-      - '{{.NATS_CMD}} server check connection'
-      - echo "Testing publish/subscribe..."
-      - 'echo "test message" | {{.NATS_CMD}} pub home.test.message'
-      - echo "✅ NATS connection test passed"
+      SERVER: '{{default "tls://connect.ngs.global" .SERVER}}'
+      CREDS: '{{default "~/.synadia/NGS-Home-daan.creds" .CREDS}}'
+      SUBJECT: '{{default "home.>" .SUBJECT}}'
 
-  # === CONTAINER TASKS ===
-  build-images:
-    desc: Build container images locally
-    vars:
-      SERVICES: '{{default "discovery,management-ui,health-monitor,device-simulator" .SERVICES}}'
-      REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
-      IMAGE_PREFIX: '{{default "calmera/nats-home-automation" .IMAGE_PREFIX}}'
-    cmds:
-      - |
-        echo "Building container images..."
-        # Use a portable approach for parsing comma-separated values
-        echo "{{.SERVICES}}" | tr ',' '\n' | while read service; do
-          echo "Building $service..."
-          {{.CONTAINER_TOOL}} build -t {{.REGISTRY}}/{{.IMAGE_PREFIX}}/$service:latest ./services/$service
-        done
-        echo "✅ Images built successfully"
-
-  push-images:
-    desc: Push container images to registry (requires login)
-    vars:
-      SERVICES: '{{default "discovery,management-ui,health-monitor,device-simulator" .SERVICES}}'
-      REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
-      IMAGE_PREFIX: '{{default "calmera/nats-home-automation" .IMAGE_PREFIX}}'
-      TAG: '{{default "latest" .TAG}}'
-    cmds:
-      - |
-        echo "Pushing container images to {{.REGISTRY}}..."
-        # Use a portable approach for parsing comma-separated values
-        echo "{{.SERVICES}}" | tr ',' '\n' | while read service; do
-          echo "Pushing $service..."
-          {{.CONTAINER_TOOL}} tag {{.REGISTRY}}/{{.IMAGE_PREFIX}}/$service:latest {{.REGISTRY}}/{{.IMAGE_PREFIX}}/$service:{{.TAG}}
-          {{.CONTAINER_TOOL}} push {{.REGISTRY}}/{{.IMAGE_PREFIX}}/$service:{{.TAG}}
-          if [ "{{.TAG}}" != "latest" ]; then
-            {{.CONTAINER_TOOL}} push {{.REGISTRY}}/{{.IMAGE_PREFIX}}/$service:latest
-          fi
-        done
-        echo "✅ Images pushed successfully"
-
-  registry-login:
-    desc: Login to GitHub Container Registry
-    cmds:
-      - |
-        echo "Logging into GitHub Container Registry..."
-        echo "Please provide your GitHub token when prompted"
-        {{.CONTAINER_TOOL}} login ghcr.io -u {{.CLI_ARGS}}
-
-  # === UTILITY TASKS ===
   clean:
-    desc: Clean all build artifacts and logs
+    desc: Clean up containers and generated files
     cmds:
-      - task: services:clean
-      - task: tools:clean
-      - find . -name "*.log" -type f -delete
-      - find . -name "coverage.*" -type f -delete
-      - find . -name ".task" -type d -exec rm -rf {} + 2>/dev/null || true
-      - echo "✅ Cleanup complete"
+      - '{{.CONTAINER_TOOL}} stop nats-home-edge || true'
+      - '{{.CONTAINER_TOOL}} rm nats-home-edge || true'
+      - rm -rf edge/dist
+      - rm -rf cloud/web-ui/dist
 
-  # === TROUBLESHOOTING TASKS ===
-  fix:
-    desc: Fix common issues (ports, containers, permissions)
-    cmds:
-      # - task: cleanup:cleanup
-      # - task: cleanup:fix-permissions
-      - echo "✅ Common issues fixed. Try 'task up' again."
-
-  validate:
-    desc: Validate environment is ready for running services
-    cmds:
-      # - task: cleanup:validate
-
-  reset:
-    desc: Complete reset - removes all data and starts fresh
+  # === LEGACY SUPPORT ===
+  legacy:info:
+    desc: Information about migrating from legacy setup
     cmds:
       - |
-        echo "⚠️  This will delete ALL data including:"
-        echo "  • All containers"
-        echo "  • All volumes (persistent data)"
-        echo "  • All networks"
+        echo "======================================"
+        echo "Legacy to Cloud Migration"
+        echo "======================================"
         echo ""
-        read -p "Are you sure? Type 'yes' to continue: " -r
-        if [[ $REPLY == "yes" ]]; then
-          # task cleanup:cleanup
-          # task cleanup:cleanup:volumes
-          echo "✅ Reset complete. Run 'task up' to start fresh."
-        else
-          echo "❌ Reset cancelled"
-        fi
+        echo "The old multi-container setup has been replaced with:"
+        echo "1. One edge server at home"
+        echo "2. Cloud-based management UI"
+        echo "3. Per-device JWT security"
+        echo ""
+        echo "To migrate:"
+        echo "1. Export your devices: task legacy:export"
+        echo "2. Set up Synadia Cloud: https://app.ngs.global"
+        echo "3. Run installer: task install"
+        echo "4. Import devices: task legacy:import"
+        echo ""
+        echo "See docs/migration-guide.md for details"
 
-  nats:
-    desc: Open NATS CLI with project credentials
+  legacy:export:
+    desc: Export devices and automations from legacy setup
     cmds:
-      - nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} {{.CLI_ARGS}}
+      - echo "TODO: Add export functionality"
 
-  # Legacy aliases for compatibility
-  start-prod:
-    desc: "Alias for 'task start'"
+  legacy:import:
+    desc: Import devices and automations to cloud setup
     cmds:
-      - task: start
-
-  compose:up:
-    desc: "Alias for 'task up'"
-    cmds:
-      - task: up
-
-  compose:down:
-    desc: "Alias for 'task down'"
-    cmds:
-      - task: down
+      - echo "TODO: Add import functionality"

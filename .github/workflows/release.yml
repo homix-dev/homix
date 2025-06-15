@@ -24,10 +24,24 @@ jobs:
       push_image: true
     secrets: inherit
 
+  # Build device provisioner
+  build-provisioner:
+    uses: ./.github/workflows/device-provisioner.yml
+    with:
+      push_image: true
+    secrets: inherit
+
+  # Build legacy services
+  build-legacy:
+    uses: ./.github/workflows/legacy-services.yml
+    with:
+      push_image: true
+    secrets: inherit
+
   # Create GitHub release
   create-release:
     runs-on: ubuntu-latest
-    needs: [build-edge, build-simulator]
+    needs: [build-edge, build-simulator, build-provisioner, build-legacy]
     
     steps:
       - name: Checkout
@@ -57,14 +71,28 @@ jobs:
           echo "" >> CHANGELOG.md
           echo "## 🐳 Container Images" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
-          echo "### Edge Server (Required)" >> CHANGELOG.md
+          echo "### Core Services" >> CHANGELOG.md
           echo "\`\`\`bash" >> CHANGELOG.md
+          echo "# Edge Server (Required)" >> CHANGELOG.md
           echo "ghcr.io/${{ github.repository_owner }}/homix-edge:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "# Device Provisioner" >> CHANGELOG.md
+          echo "ghcr.io/${{ github.repository_owner }}/homix-device-provisioner:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "# Device Simulator (For Testing)" >> CHANGELOG.md
+          echo "ghcr.io/${{ github.repository_owner }}/homix-device-simulator:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
           echo "\`\`\`" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
-          echo "### Device Simulator (Optional)" >> CHANGELOG.md
+          echo "### Legacy Services (Optional)" >> CHANGELOG.md
           echo "\`\`\`bash" >> CHANGELOG.md
-          echo "ghcr.io/${{ github.repository_owner }}/homix-device-simulator:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
+          echo "# Discovery Service" >> CHANGELOG.md
+          echo "ghcr.io/${{ github.repository_owner }}/homix-discovery:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "# Health Monitor" >> CHANGELOG.md
+          echo "ghcr.io/${{ github.repository_owner }}/homix-health-monitor:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "# Management UI" >> CHANGELOG.md
+          echo "ghcr.io/${{ github.repository_owner }}/homix-management-ui:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
           echo "\`\`\`" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "## 🚀 Quick Start" >> CHANGELOG.md

@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o device-simulator .
 
 # Final stage
-FROM alpine:3.21
+FROM alpine:3.22
 
 RUN apk --no-cache add ca-certificates
 

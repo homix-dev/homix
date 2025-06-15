@@ -42,7 +42,7 @@ jobs:
           go test -v -race -coverprofile=coverage.out ./...
       
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           file: ./edge/coverage.out
           flags: edge-server
@@ -60,7 +60,7 @@ jobs:
           cache-dependency-path: 'edge/go.sum'
       
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
           working-directory: edge
@@ -101,7 +101,7 @@ jobs:
             type=sha,prefix={{branch}}-
       
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./edge
           platforms: linux/amd64,linux/arm64,linux/arm/v7

@@ -1,74 +1,47 @@
 version: '3'
 
+# Services for Cloud-First Architecture
+# Most services are now part of the edge server
+
 includes:
-  discovery: ./discovery/Taskfile.yaml
-  health: ./health-monitor/Taskfile.yaml
-  ui: ./management-ui/Taskfile.yaml
   simulator: ./device-simulator/Taskfile.yaml
 
 tasks:
   build:
-    desc: Build all services
+    desc: Build remaining services (device simulator)
     cmds:
-      - task: discovery:build
-      - task: health:build
-      - task: ui:build
       - task: simulator:build
 
   test:
-    desc: Test all services
+    desc: Test remaining services
     cmds:
-      - task: discovery:test
-      - task: health:test
-      - task: ui:test
       - task: simulator:test
 
   lint:
-    desc: Lint all services
+    desc: Lint remaining services
     cmds:
-      - task: discovery:lint
-      - task: health:lint
-      - task: ui:lint
       - task: simulator:lint
 
-  format:
-    desc: Format all services
+  simulator:run:
+    desc: Run device simulator for testing
     cmds:
-      - task: discovery:format
-      - task: health:fmt
-      - task: ui:fmt
-      - task: simulator:fmt
+      - task: simulator:run
 
-  clean:
-    desc: Clean all services
+  legacy:info:
+    desc: Information about moved services
     cmds:
-      - task: discovery:clean
-      - task: health:clean
-      - task: ui:clean
-      - task: simulator:clean
-
-  install:
-    desc: Install all services
-    cmds:
-      - task: discovery:install
-      - task: health:install
-
-  run-all:
-    desc: Run all services (use separate terminals)
-    cmds:
-      - echo "Start each service in a separate terminal:"
-      - echo "  task services:discovery:run"
-      - echo "  task services:health:run" 
-      - echo "  task services:ui:run (Go version)"
-      - echo "  task services:simulator:run"
-
-  dev:
-    desc: Run all services in development mode
-    cmds:
-      - 'echo "Starting all services..."'
-      - 'echo "Discovery: http://localhost:8080"'
-      - 'echo "Health Monitor: http://localhost:8082"'
-      - 'echo "Management UI (Go): http://localhost:8081"'
-      - 'echo "Device Simulator: http://localhost:8083"'
-      - 'echo ""'
-      - 'echo "Run each in a separate terminal or use a process manager"'
+      - |
+        echo "========================================="
+        echo "Services Migration Information"
+        echo "========================================="
+        echo ""
+        echo "The following services have been moved:"
+        echo "• Discovery Service → Part of edge server"
+        echo "• Management UI → Cloud-based (Vercel/Netlify)"
+        echo "• Health Monitor → Part of edge server"
+        echo "• Automation Engine → Part of edge server"
+        echo ""
+        echo "Only the device simulator remains as a separate service"
+        echo "for testing purposes."
+        echo ""
+        echo "Legacy services can be found in: legacy/services/"

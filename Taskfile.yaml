@@ -98,7 +98,7 @@ tasks:
   test:integration:
     desc: Run integration tests
     cmds:
-      - echo "TODO: Add integration tests"
+      - echo 'Integration tests not yet implemented'
 
   # === CLOUD UI ===
   ui:dev:
@@ -162,9 +162,9 @@ tasks:
   legacy:export:
     desc: Export devices and automations from legacy setup
     cmds:
-      - echo "TODO: Add export functionality"
+      - echo 'TODO - Add export functionality'
 
   legacy:import:
     desc: Import devices and automations to cloud setup
     cmds:
-      - echo "TODO: Add import functionality"
+      - echo 'TODO - Add import functionality'

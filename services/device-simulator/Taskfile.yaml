@@ -1,7 +1,8 @@
 version: '3'
 
 vars:
-  NATS_URL: '{{default "nats://home:changeme@localhost:4222" .NATS_URL}}'
+  NATS_URL: '{{default "nats://localhost:4222" .NATS_URL}}'
+  NATS_CREDS: '{{default "" .NATS_CREDS}}'
   HTTP_PORT: '{{default "8083" .HTTP_PORT}}'
 
 tasks:
@@ -13,7 +14,14 @@ tasks:
   run:
     desc: Run the device simulator
     cmds:
-      - go run main.go
+      - |
+        echo "Starting device simulator..."
+        {{if .NATS_CREDS}}echo "Using JWT credentials: {{.NATS_CREDS}}"{{else}}echo "Using no authentication (for local testing)"{{end}}
+        go run main.go
+    env:
+      NATS_URL: '{{.NATS_URL}}'
+      NATS_CREDS: '{{.NATS_CREDS}}'
+      HTTP_PORT: '{{.HTTP_PORT}}'
 
   build:
     desc: Build the device simulator binary

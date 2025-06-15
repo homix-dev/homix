@@ -1,200 +1,93 @@
 version: '3'
 
+# Infrastructure tasks for cloud-first architecture
+# NATS server is now part of the edge server
+
 vars:
-  COMPOSE_FILE: docker-compose.yml
-  NATS_CONFIG: nats-server.conf
   CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
 
 tasks:
   setup:
-    desc: Setup infrastructure prerequisites
-    dir: infrastructure
+    desc: Set up cloud-first infrastructure
     cmds:
-      - echo "Checking container tool..."
-      - '{{.CONTAINER_TOOL}} --version'
-      - echo "Creating data directories..."
-      - mkdir -p data/nats/jetstream
-      - mkdir -p data/nats/certs
-      - task: generate-certs
-
-  start:
-    desc: Start NATS server
-    dir: infrastructure
-    cmds:
-      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} up -d'
-      - echo "Waiting for NATS to be ready..."
-      - sleep 3
-      - task: health-check
-
-  start-dev:
-    desc: Start NATS server in development mode (no Synadia Cloud)
-    dir: infrastructure
-    env:
-      NATS_CONFIG: nats-server-dev.conf
-    cmds:
-      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} up -d'
-      - echo "Waiting for NATS to be ready..."
-      - sleep 3
-      - task: health-check
-
-  start-hybrid:
-    desc: Start NATS server in hybrid mode (local auth + Synadia Cloud)
-    dir: infrastructure
-    env:
-      NATS_CONFIG: nats-server-hybrid.conf
-    cmds:
-      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} up -d'
-      - echo "Waiting for NATS to be ready..."
-      - sleep 3
-      - task: health-check
-
-  stop:
-    desc: Stop NATS server
-    dir: infrastructure
-    cmds:
-      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} down'
-
-  restart:
-    desc: Restart NATS server
-    cmds:
-      - task: stop
-      - task: start
-
-  logs:
-    desc: Show NATS server logs
-    dir: infrastructure
-    cmds:
-      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} logs -f'
-
-  health-check:
-    desc: Check NATS server health
-    cmds:
-      - nats --server=nats://localhost:4222 --user=home --password=changeme server check connection
+      - |
+        echo "Setting up NATS Home Automation..."
+        echo ""
+        echo "For the cloud-first architecture, infrastructure setup is simple:"
+        echo "1. Sign up for Synadia Cloud: https://app.ngs.global"
+        echo "2. Run the installer: curl -sSL https://get.nats-home.io | sh"
+        echo ""
+        echo "The edge server includes all necessary infrastructure:"
+        echo "• NATS server (configured as leaf node)"
+        echo "• JetStream for persistence"
+        echo "• KV store for configuration"
+        echo "• Device gateway"
+        echo "• Automation engine"
 
   test-connection:
-    desc: Run comprehensive connection tests
+    desc: Test connection to Synadia Cloud
+    cmds:
+      - ../scripts/test-cloud-connection.sh {{.CREDS}}
     vars:
-      NATS_CMD: 'nats --server={{default "nats://localhost:4222" .NATS_URL}} --user={{default "home" .NATS_USER}} --password={{default "changeme" .NATS_PASSWORD}}'
-    cmds:
-      - echo "Testing NATS Connection..."
-      - 'echo "Server: {{default "nats://localhost:4222" .NATS_URL}}"'
-      - echo ""
-      - echo "1. Testing server connection..."
-      - '{{.NATS_CMD}} server check connection && echo "PASS: Server connection successful" || (echo "FAIL: Server connection failed" && exit 1)'
-      - echo ""
-      - echo "2. Checking JetStream status..."
-      - '{{.NATS_CMD}} server report jetstream 2>/dev/null | grep -q "JetStream" && echo "PASS: JetStream is enabled" || echo "WARN: JetStream might not be enabled"'
-      - echo ""
-      - echo "3. Testing publish/subscribe..."
-      - 'TEST_MSG="Hello NATS $(date)" && echo "$TEST_MSG" | {{.NATS_CMD}} pub home.test.message && echo "PASS: Publish/Subscribe working"'
-      - echo ""
-      - echo "4. Testing KV Store..."
-      - |
-        {{.NATS_CMD}} kv add test-bucket >/dev/null 2>&1 || true
-        echo "test-value" | {{.NATS_CMD}} kv put test-bucket test-key >/dev/null 2>&1
-        {{.NATS_CMD}} kv get test-bucket test-key 2>/dev/null | grep -q "test-value" && echo "PASS: KV Store working" || echo "FAIL: KV Store failed"
-        {{.NATS_CMD}} kv rm test-bucket --force >/dev/null 2>&1 || true
-      - echo ""
-      - echo "5. Testing subject permissions..."
-      - 'echo "test" | {{.NATS_CMD}} pub "home.devices.test" >/dev/null 2>&1 && echo "PASS: Can publish to home.* subjects" || echo "FAIL: Cannot publish to home.* subjects"'
-      - echo ""
-      - echo "All connection tests completed!"
+      CREDS: '{{default "~/.synadia/NGS-Home-*.creds" .CREDS}}'
 
-  generate-certs:
-    desc: Generate self-signed certificates for NATS
-    dir: infrastructure
+  edge:logs:
+    desc: View edge server logs
     cmds:
-      - |
-        if [ ! -f data/nats/certs/server.crt ]; then
-          echo "Generating self-signed certificates..."
-          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout data/nats/certs/server.key \
-            -out data/nats/certs/server.crt \
-            -subj "/C=US/ST=State/L=City/O=Home/CN=nats.local"
-        else
-          echo "Certificates already exist"
-        fi
+      - '{{.CONTAINER_TOOL}} logs -f nats-home-edge'
 
-  backup:
-    desc: Backup JetStream data
-    dir: infrastructure
+  edge:status:
+    desc: Check edge server status
     cmds:
-      - |
-        BACKUP_FILE="nats-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
-        echo "Creating backup $BACKUP_FILE..."
-        tar -czf $BACKUP_FILE data/nats/jetstream
-        echo "Backup created: $BACKUP_FILE"
+      - '{{.CONTAINER_TOOL}} ps | grep nats-home-edge || echo "Edge server not running"'
 
-  restore:
-    desc: Restore JetStream data from backup
-    vars:
-      BACKUP_FILE: '{{.BACKUP_FILE}}'
+  legacy:up:
+    desc: Start legacy local NATS server (for development/testing)
     cmds:
       - |
-        if [ -z "{{.BACKUP_FILE}}" ]; then
-          echo "Please specify BACKUP_FILE=<filename>"
-          exit 1
-        fi
-      - echo "Restoring from {{.BACKUP_FILE}}..."
-      - task: stop
-      - rm -rf data/nats/jetstream
-      - tar -xzf {{.BACKUP_FILE}}
-      - task: start
+        echo "Starting legacy NATS server..."
+        echo "Note: This is only for development/testing of legacy components"
+        {{.CONTAINER_TOOL}} run -d \
+          --name nats-legacy \
+          -p 4222:4222 -p 8222:8222 \
+          -v ./legacy/infrastructure/nats-server-dev.conf:/etc/nats/nats-server.conf:ro \
+          nats:2.11 -c /etc/nats/nats-server.conf
+
+  legacy:down:
+    desc: Stop legacy NATS server
+    cmds:
+      - '{{.CONTAINER_TOOL}} stop nats-legacy || true'
+      - '{{.CONTAINER_TOOL}} rm nats-legacy || true'
 
   clean:
-    desc: "Clean all data (WARNING: Destructive!)"
+    desc: Clean up all infrastructure containers
+    cmds:
+      - '{{.CONTAINER_TOOL}} stop nats-home-edge || true'
+      - '{{.CONTAINER_TOOL}} rm nats-home-edge || true'
+      - '{{.CONTAINER_TOOL}} stop nats-legacy || true'
+      - '{{.CONTAINER_TOOL}} rm nats-legacy || true'
+
+  legacy:info:
+    desc: Information about infrastructure changes
     cmds:
       - |
-        echo "WARNING: This will delete all NATS data!"
-        read -p "Are you sure? (y/N) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-          task infra:stop
-          rm -rf data/nats/jetstream/*
-          echo "All data cleaned"
-        else
-          echo "Cancelled"
-        fi
-
-  shell:
-    desc: Open shell in NATS container
-    dir: infrastructure
-    cmds:
-      - '{{.CONTAINER_TOOL}} compose -f {{.COMPOSE_FILE}} exec nats sh'
-
-  bench:
-    desc: Run NATS benchmark
-    cmds:
-      - nats --server=nats://localhost:4222 --user=home --password=changeme bench test --msgs=10000 --size=256
-
-  # JetStream management
-  js-info:
-    desc: Show JetStream info
-    cmds:
-      - nats --server=nats://localhost:4222 --user=home --password=changeme stream ls
-      - nats --server=nats://localhost:4222 --user=home --password=changeme consumer ls
-
-  create-streams:
-    desc: Create JetStream streams for home automation
-    cmds:
-      - |
-        nats --server=nats://localhost:4222 --user=home --password=changeme \
-          stream add HOME_EVENTS \
-          --subjects="home.devices.>" \
-          --storage=file \
-          --retention=limits \
-          --max-age=7d \
-          --max-msgs=-1 \
-          --max-bytes=-1 \
-          --dupe-window=1m \
-          --no-allow-rollup \
-          --discard=old
-      - |
-        nats --server=nats://localhost:4222 --user=home --password=changeme \
-          stream add HOME_DISCOVERY \
-          --subjects="home.discovery.>" \
-          --storage=file \
-          --retention=limits \
-          --max-age=1d \
-          --max-msgs=1000 \
-          --discard=old
+        echo "========================================="
+        echo "Infrastructure Migration Information"
+        echo "========================================="
+        echo ""
+        echo "OLD ARCHITECTURE:"
+        echo "• Separate NATS server container"
+        echo "• Separate init container"
+        echo "• Complex configuration files"
+        echo "• Multiple networks and volumes"
+        echo ""
+        echo "NEW ARCHITECTURE:"
+        echo "• NATS server built into edge server"
+        echo "• Auto-configuration on startup"
+        echo "• Single container deployment"
+        echo "• Cloud-based management"
+        echo ""
+        echo "To migrate:"
+        echo "1. Export your data (if needed)"
+        echo "2. Set up Synadia Cloud"
+        echo "3. Run: task install"

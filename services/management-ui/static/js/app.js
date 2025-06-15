@@ -446,6 +446,14 @@ class App {
         });
     }
 
+    updateDashboardDevice(device) {
+        // Update recent devices list if this device is in it
+        this.updateRecentDevices();
+        
+        // Update any device-specific stats on dashboard
+        this.updateDashboard();
+    }
+
     updateRecentEvents() {
         const container = document.getElementById('recent-events');
         container.innerHTML = '';

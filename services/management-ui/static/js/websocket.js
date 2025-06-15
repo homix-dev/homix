@@ -84,7 +84,13 @@ class WebSocketManager {
                 this.handleInitialData(data || {});
                 break;
             case 'device_update':
-                this.emit('device_update', data);
+                // Extract device_id and state from the message
+                const updateData = {
+                    device_id: message.device_id,
+                    state: message.state,
+                    timestamp: message.timestamp
+                };
+                this.emit('device_update', updateData);
                 break;
             case 'event':
                 if (data && data.event) {

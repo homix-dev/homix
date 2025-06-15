@@ -1,0 +1,74 @@
+# NATS Home Edge - Configuration
+# This is the ONLY configuration file you need!
+
+# Cloud connection (set via environment or here)
+cloud:
+  # Synadia Cloud connection
+  url: ${SYNADIA_URL:-tls://connect.ngs.global}
+  
+  # Path to credentials file
+  credentials: ${SYNADIA_CREDS:-/creds/cloud.creds}
+  
+  # Reconnect settings
+  reconnect_wait: 2s
+  max_reconnect_attempts: -1  # infinite
+
+# Home identification
+home:
+  # Unique ID for this home (auto-generated if not set)
+  id: ${HOME_ID:-}
+  
+  # Friendly name
+  name: ${HOME_NAME:-My Home}
+  
+  # Location (for sunrise/sunset calculations)
+  location:
+    latitude: ${HOME_LAT:-}
+    longitude: ${HOME_LON:-}
+    timezone: ${HOME_TZ:-America/New_York}
+
+# Local NATS server (for device connections)
+local:
+  # Port for local device connections
+  port: ${LOCAL_NATS_PORT:-4222}
+  
+  # WebSocket for local web UI (if needed)
+  websocket:
+    port: ${LOCAL_WS_PORT:-9222}
+    enabled: true
+
+# Device gateway settings
+gateway:
+  # Auto-discovery protocols
+  discovery:
+    - mdns      # mDNS/Bonjour
+    - ssdp      # SSDP/UPnP
+    - mqtt      # MQTT devices
+    
+  # Protocol bridges
+  bridges:
+    mqtt:
+      enabled: ${MQTT_ENABLED:-true}
+      port: ${MQTT_PORT:-1883}
+      
+    http:
+      enabled: ${HTTP_ENABLED:-true}
+      port: ${HTTP_PORT:-8080}
+
+# Automation engine
+automation:
+  # Where to store automation state
+  state_store: ${STATE_STORE:-/data/automations}
+  
+  # How often to sync with cloud
+  sync_interval: ${SYNC_INTERVAL:-30s}
+
+# Logging
+logging:
+  level: ${LOG_LEVEL:-info}
+  format: ${LOG_FORMAT:-json}
+
+# Metrics (Prometheus compatible)
+metrics:
+  enabled: ${METRICS_ENABLED:-true}
+  port: ${METRICS_PORT:-2112}

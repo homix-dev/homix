@@ -1,5 +1,8 @@
 # NATS Home Automation System
 
+> 🚀 **Major Update**: We're transitioning to a cloud-first architecture with Synadia Cloud!  
+> See [QUICKSTART.md](QUICKSTART.md) for the new 5-minute setup or [REFACTOR-PLAN.md](REFACTOR-PLAN.md) for the vision.
+
 A high-performance, distributed home automation system built on NATS messaging with full Home Assistant compatibility.
 
 ## Overview

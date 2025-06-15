@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -158,7 +159,10 @@ func connectToCloud() (*nats.Conn, error) {
 		"connected": time.Now().UTC(),
 	}
 
-	if err := nc.PublishAsJSON("home.edge.announce", homeInfo); err != nil {
+	data, err := json.Marshal(homeInfo)
+	if err != nil {
+		log.Printf("Failed to marshal home info: %v", err)
+	} else if err := nc.Publish("home.edge.announce", data); err != nil {
 		log.Printf("Failed to announce home: %v", err)
 	}
 

@@ -1,0 +1,47 @@
+{
+  "name": "Motion Activated Lights",
+  "description": "Turn on lights when motion is detected, turn off after 5 minutes",
+  "enabled": true,
+  "triggers": [
+    {
+      "type": "device_state",
+      "device_id": "sim_motion_hallway",
+      "attribute": "motion",
+      "to": true
+    }
+  ],
+  "conditions": [
+    {
+      "type": "time_between",
+      "after": "18:00",
+      "before": "06:00"
+    }
+  ],
+  "actions": [
+    {
+      "type": "device_command",
+      "device_id": "sim_light_hallway",
+      "command": "turn_on",
+      "parameters": {
+        "brightness": 80
+      }
+    },
+    {
+      "type": "notification",
+      "title": "Motion Detected",
+      "message": "Hallway lights turned on",
+      "priority": "normal"
+    },
+    {
+      "type": "delay",
+      "delay": 300,
+      "unit": "seconds"
+    },
+    {
+      "type": "device_command",
+      "device_id": "sim_light_hallway", 
+      "command": "turn_off",
+      "parameters": {}
+    }
+  ]
+}

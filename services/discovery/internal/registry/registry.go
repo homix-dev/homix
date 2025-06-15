@@ -28,7 +28,7 @@ func New(js jetstream.JetStream, bucket string, log *logrus.Logger) (*Registry, 
 	kv, err := js.CreateKeyValue(context.Background(), jetstream.KeyValueConfig{
 		Bucket:      bucket,
 		Description: "Device registry for home automation",
-		TTL:         24 * time.Hour,
+		TTL:         5 * time.Minute, // Devices expire after 5 minutes without updates
 		History:     10,
 	})
 	if err != nil {

@@ -1,0 +1,178 @@
+esphome:
+  name: esp32-s3-game-controller
+  platform: ESP32
+  board: esp32-s3-devkitc-1
+
+wifi:
+  ssid: "Your_WiFi_SSID"
+  password: "Your_WiFi_Password"
+
+  ap:
+    ssid: "ESP32-S3-Controller"
+    password: "fallback123"
+
+captive_portal:
+
+logger:
+
+api:
+  password: "your_api_password"
+
+ota:
+  password: "your_ota_password"
+
+# WS2812 LED Strip
+light:
+  - platform: neopixelbus
+    type: GRB
+    variant: WS2812
+    pin: GPIO12
+    num_leds: 5
+    name: "Status LEDs"
+    effects:
+      - addressable_rainbow:
+      - addressable_color_wipe:
+      - addressable_scan:
+      - addressable_twinkle:
+      - addressable_random_twinkle:
+      - addressable_fireworks:
+      - addressable_flicker:
+
+# Battery Monitor (ADC)
+sensor:
+  - platform: adc
+    pin: GPIO13
+    name: "Battery Voltage"
+    attenuation: 11dB
+    update_interval: 10s
+    filters:
+      - multiply: 2.0  # Adjust based on your voltage divider ratio
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+
+  # Joystick ADC Inputs
+  - platform: adc
+    pin: GPIO3
+    name: "Joystick Up/Down"
+    attenuation: 11dB
+    update_interval: 100ms
+    filters:
+      - calibrate_linear:
+          - 0.0 -> -1.0
+          - 1.65 -> 0.0
+          - 3.3 -> 1.0
+
+  - platform: adc
+    pin: GPIO1
+    name: "Joystick Left/Right"
+    attenuation: 11dB
+    update_interval: 100ms
+    filters:
+      - calibrate_linear:
+          - 0.0 -> -1.0
+          - 1.65 -> 0.0
+          - 3.3 -> 1.0
+
+# Buzzer (PWM Output)
+output:
+  - platform: ledc
+    pin: GPIO46
+    id: buzzer_output
+    frequency: 2000Hz
+
+# Buzzer Switch
+switch:
+  - platform: output
+    name: "Buzzer"
+    output: buzzer_output
+    id: buzzer
+    restore_mode: ALWAYS_OFF
+
+# Buttons
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO39
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: "Button A"
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+
+  - platform: gpio
+    pin:
+      number: GPIO40
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: "Button B"
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+
+  - platform: gpio
+    pin:
+      number: GPIO38
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: "Button X"
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+
+  - platform: gpio
+    pin:
+      number: GPIO41
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: "Button Y"
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+
+  - platform: gpio
+    pin:
+      number: GPIO45
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: "Menu Button"
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+
+  - platform: gpio
+    pin:
+      number: GPIO0
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: "Start Button"
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+
+# Buzzer Service for playing tones
+api:
+  services:
+    - service: play_tone
+      variables:
+        frequency: int
+        duration: int
+      then:
+        - output.ledc.set_frequency:
+            id: buzzer_output
+            frequency: !lambda 'return frequency;'
+        - output.turn_on: buzzer_output
+        - delay: !lambda 'return duration;'
+        - output.turn_off: buzzer_output

@@ -4,6 +4,7 @@ includes:
   discovery: ./discovery/Taskfile.yaml
   health: ./health-monitor/Taskfile.yaml
   ui: ./management-ui/Taskfile.yaml
+  simulator: ./device-simulator/Taskfile.yaml
 
 tasks:
   build:
@@ -12,6 +13,7 @@ tasks:
       - task: discovery:build
       - task: health:build
       - task: ui:build
+      - task: simulator:build
 
   test:
     desc: Test all services
@@ -19,6 +21,7 @@ tasks:
       - task: discovery:test
       - task: health:test
       - task: ui:test
+      - task: simulator:test
 
   lint:
     desc: Lint all services
@@ -26,6 +29,7 @@ tasks:
       - task: discovery:lint
       - task: health:lint
       - task: ui:lint
+      - task: simulator:lint
 
   format:
     desc: Format all services
@@ -33,6 +37,7 @@ tasks:
       - task: discovery:format
       - task: health:fmt
       - task: ui:fmt
+      - task: simulator:fmt
 
   clean:
     desc: Clean all services
@@ -40,6 +45,7 @@ tasks:
       - task: discovery:clean
       - task: health:clean
       - task: ui:clean
+      - task: simulator:clean
 
   install:
     desc: Install all services
@@ -53,7 +59,8 @@ tasks:
       - echo "Start each service in a separate terminal:"
       - echo "  task services:discovery:run"
       - echo "  task services:health:run" 
-      - echo "  task services:ui:run"
+      - echo "  task services:ui:run (Go version)"
+      - echo "  task services:simulator:run"
 
   dev:
     desc: Run all services in development mode
@@ -61,6 +68,7 @@ tasks:
       - 'echo "Starting all services..."'
       - 'echo "Discovery: http://localhost:8080"'
       - 'echo "Health Monitor: http://localhost:8082"'
-      - 'echo "Management UI: http://localhost:8081"'
+      - 'echo "Management UI (Go): http://localhost:8081"'
+      - 'echo "Device Simulator: http://localhost:8083"'
       - 'echo ""'
       - 'echo "Run each in a separate terminal or use a process manager"'

@@ -38,7 +38,7 @@ func init() {
 	rootCmd.Flags().String("nats-creds", "", "NATS credentials file")
 
 	// HTTP server flags
-	rootCmd.Flags().String("http-addr", ":8090", "HTTP server address")
+	rootCmd.Flags().String("http-addr", ":8081", "HTTP server address")
 	rootCmd.Flags().String("http-static", "./static", "Static files directory")
 
 	// API flags

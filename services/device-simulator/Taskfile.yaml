@@ -1,0 +1,62 @@
+version: '3'
+
+vars:
+  NATS_URL: '{{default "nats://home:changeme@localhost:4222" .NATS_URL}}'
+  HTTP_PORT: '{{default "8083" .HTTP_PORT}}'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  run:
+    desc: Run the device simulator
+    cmds:
+      - go run main.go
+
+  build:
+    desc: Build the device simulator binary
+    cmds:
+      - go build -o bin/device-simulator main.go
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v ./...
+
+  lint:
+    desc: Run linter
+    cmds:
+      - golangci-lint run || echo "golangci-lint not installed, skipping..."
+
+  fmt:
+    desc: Format code
+    cmds:
+      - go fmt ./...
+
+  tidy:
+    desc: Tidy go modules
+    cmds:
+      - go mod tidy
+
+  deps:
+    desc: Download dependencies
+    cmds:
+      - go mod download
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -f bin/device-simulator
+      - go clean
+
+  docker:build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t nats-device-simulator:latest .
+
+  docker:run:
+    desc: Run in Docker
+    cmds:
+      - docker run -p 8083:8083 -e NATS_URL={{.NATS_URL}} nats-device-simulator:latest

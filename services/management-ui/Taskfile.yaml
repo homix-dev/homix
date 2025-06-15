@@ -5,6 +5,7 @@ vars:
   BINARY: nats-home-{{.SERVICE}}
   DOCKER_IMAGE: nats-home/{{.SERVICE}}
   CONFIG_FILE: config.yaml
+  CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
 
 tasks:
   default:
@@ -33,14 +34,14 @@ tasks:
   docker:build:
     desc: Build Docker image
     cmds:
-      - docker build -t {{.DOCKER_IMAGE}}:latest .
+      - '{{.CONTAINER_TOOL}} build -t {{.DOCKER_IMAGE}}:latest .'
 
   docker:run:
     desc: Run service in Docker
     deps: [docker:build]
     cmds:
       - |
-        docker run --rm -it \
+        {{.CONTAINER_TOOL}} run --rm -it \
           --name {{.SERVICE}} \
           -p 8081:8081 \
           -v $(pwd)/config.yaml:/app/config.yaml:ro \

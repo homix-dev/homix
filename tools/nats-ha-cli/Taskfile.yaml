@@ -9,6 +9,7 @@ vars:
   BUILD_TIME:
     sh: date -u +"%Y-%m-%dT%H:%M:%SZ"
   LDFLAGS: '-X main.version={{.VERSION}} -X main.buildTime={{.BUILD_TIME}}'
+  CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
 
 tasks:
   build:
@@ -329,7 +330,7 @@ tasks:
   docker-build:
     desc: Build Docker image
     cmds:
-      - docker build -t {{.APP_NAME}}:{{.VERSION}} -t {{.APP_NAME}}:latest .
+      - '{{.CONTAINER_TOOL}} build -t {{.APP_NAME}}:{{.VERSION}} -t {{.APP_NAME}}:latest .'
 
   completion:
     desc: Generate shell completions

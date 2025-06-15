@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   PYTHON_CMD: '{{default "python3" .PYTHON_CMD}}'
+  CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
 
 includes:
   zigbee: ./zigbee2mqtt-nats/Taskfile.yaml
@@ -68,13 +69,13 @@ tasks:
   docker-build:
     desc: Build bridge Docker images
     cmds:
-      - docker build -t nats-mqtt-bridge:latest mqtt-nats-bridge/
+      - '{{.CONTAINER_TOOL}} build -t nats-mqtt-bridge:latest mqtt-nats-bridge/'
 
   docker-run:
     desc: Run MQTT bridge in Docker
     cmds:
       - |
-        docker run --rm \
+        {{.CONTAINER_TOOL}} run --rm \
           -e NATS_URL=nats://host.docker.internal:4222 \
           -e MQTT_BROKER=host.docker.internal \
           --name nats-mqtt-bridge \

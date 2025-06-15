@@ -306,8 +306,28 @@ class App {
         if (this.currentPage === 'dashboard') {
             this.updateRecentEvents();
         } else if (this.currentPage === 'events') {
-            this.addEventToTable(event);
+            this.addEventToLiveTable(event);
         }
+    }
+    
+    addEventToLiveTable(event) {
+        const tbody = document.getElementById('events-table-body');
+        if (!tbody) return;
+        
+        // Create new row for the event
+        const row = UI.createEventRow(event);
+        
+        // Add to the beginning of the table (newest first)
+        tbody.insertBefore(row, tbody.firstChild);
+        
+        // Keep only last 500 rows in the table for performance
+        while (tbody.children.length > 500) {
+            tbody.removeChild(tbody.lastChild);
+        }
+        
+        // Add animation for new event
+        row.classList.add('new-event');
+        setTimeout(() => row.classList.remove('new-event'), 1000);
     }
 
     showPage(page) {
@@ -487,14 +507,37 @@ class App {
         });
     }
 
-    updateEventTable() {
+    async updateEventTable() {
         const tbody = document.getElementById('events-table-body');
         tbody.innerHTML = '';
-
-        this.events.forEach(event => {
-            const row = UI.createEventRow(event);
-            tbody.appendChild(row);
-        });
+        
+        try {
+            // Load events from API
+            const response = await API.getSystemEvents();
+            if (response && response.length > 0) {
+                // Update local events array with API data
+                this.events = response;
+                
+                // Populate table
+                this.events.forEach(event => {
+                    const row = UI.createEventRow(event);
+                    tbody.appendChild(row);
+                });
+            } else {
+                // Use local events if API returns empty
+                this.events.forEach(event => {
+                    const row = UI.createEventRow(event);
+                    tbody.appendChild(row);
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load events from API:', error);
+            // Fall back to local events
+            this.events.forEach(event => {
+                const row = UI.createEventRow(event);
+                tbody.appendChild(row);
+            });
+        }
     }
 
     updateDeviceDisplays() {
@@ -680,9 +723,8 @@ class App {
         if (!automation) return;
 
         this.selectedAutomation = automation;
-        automationBuilder.init(automation);
-        document.getElementById('automation-modal-title').textContent = 'Edit Automation';
-        UI.showModal('automation-modal');
+        // Always open in visual designer
+        this.showReteDesigner(automation);
     }
 
     async testAutomation(automationId) {
@@ -711,9 +753,239 @@ class App {
 
     showCreateAutomation() {
         this.selectedAutomation = null;
-        automationBuilder.init();
+        // Go directly to visual designer
+        this.showReteDesigner();
+    }
+    
+    showBuilderChoice() {
+        const modalBody = document.getElementById('automation-modal-body');
+        modalBody.innerHTML = `
+            <div class="builder-choice">
+                <h3>Choose Automation Builder</h3>
+                <div class="builder-options">
+                    <div class="builder-option" id="visual-designer-option">
+                        <i class="fas fa-project-diagram"></i>
+                        <h4>Visual Designer</h4>
+                        <p>Drag and drop nodes to create automation flows</p>
+                    </div>
+                    <div class="builder-option" id="form-builder-option">
+                        <i class="fas fa-list-alt"></i>
+                        <h4>Form Builder</h4>
+                        <p>Step-by-step form to configure automation</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Attach click handlers after DOM is updated
+        document.getElementById('visual-designer-option').onclick = () => this.showReteDesigner();
+        document.getElementById('form-builder-option').onclick = () => this.showTraditionalBuilder();
+        
         document.getElementById('automation-modal-title').textContent = 'Create Automation';
+        const modalFooter = document.querySelector('#automation-modal .modal-footer');
+        modalFooter.innerHTML = `<button class="btn btn-secondary" id="cancel-modal-btn">Cancel</button>`;
+        
+        // Attach cancel handler
+        document.getElementById('cancel-modal-btn').onclick = () => UI.hideModal('automation-modal');
+        
         UI.showModal('automation-modal');
+    }
+    
+    createAutomation() {
+        this.showCreateAutomation();
+    }
+    
+    showFlowDesigner(automation = null) {
+        // Use the new Rete.js designer
+        this.showReteDesigner(automation);
+    }
+    
+    showReteDesigner(automation = null) {
+        // Use the passed automation or the selected one
+        const automationToEdit = automation || this.selectedAutomation;
+        
+        // Update modal title
+        const modalTitle = automationToEdit ? 'Edit Automation - Visual Designer' : 'Create Automation - Visual Designer';
+        document.getElementById('automation-modal-title').textContent = modalTitle;
+        
+        // Update modal content for full-screen designer
+        const modalContent = document.querySelector('#automation-modal .modal-content');
+        modalContent.classList.add('flow-designer-modal');
+        
+        const modalBody = document.getElementById('automation-modal-body');
+        modalBody.classList.add('flow-designer-body');
+        modalBody.innerHTML = '<div id="rete-designer-container" style="height: 100%;"></div>';
+        
+        // Initialize Rete designer with a slight delay to ensure DOM is ready
+        setTimeout(() => {
+            if (window.reteDesigner) {
+                window.reteDesigner.init('rete-designer-container', automationToEdit);
+            } else {
+                console.error('Rete designer not loaded');
+                this.showTraditionalBuilder(automationToEdit);
+                return;
+            }
+        }, 100);
+        
+        // Update modal footer
+        const modalFooter = document.querySelector('#automation-modal .modal-footer');
+        modalFooter.innerHTML = `
+            <button class="btn btn-secondary" id="switch-to-form-btn">Switch to Form Builder</button>
+            <button class="btn btn-secondary" id="cancel-rete-btn">Cancel</button>
+            <button class="btn btn-primary" id="save-rete-btn">Save Automation</button>
+        `;
+        
+        // Attach button handlers
+        document.getElementById('switch-to-form-btn').onclick = () => this.showTraditionalBuilder();
+        document.getElementById('cancel-rete-btn').onclick = () => UI.hideModal('automation-modal');
+        document.getElementById('save-rete-btn').onclick = () => this.saveReteAutomation();
+        
+        // Show the modal
+        UI.showModal('automation-modal');
+    }
+    
+    async saveReteAutomation() {
+        if (!window.reteDesigner) {
+            UI.showToast('Visual designer not available', 'error');
+            return;
+        }
+        
+        // Get automation data from Rete designer (includes name, description, enabled)
+        const automationData = window.reteDesigner.convertToAutomation();
+        const finalData = automationData;
+        
+        if (!finalData.name) {
+            UI.showToast('Please enter an automation name', 'error');
+            return;
+        }
+        
+        if (finalData.triggers.length === 0) {
+            UI.showToast('Please add at least one trigger', 'error');
+            return;
+        }
+        
+        if (finalData.actions.length === 0) {
+            UI.showToast('Please add at least one action', 'error');
+            return;
+        }
+        
+        try {
+            if (this.selectedAutomation) {
+                // Update existing automation
+                await API.updateAutomation(this.selectedAutomation.id, finalData);
+                Object.assign(this.selectedAutomation, finalData);
+                UI.showToast('Automation updated successfully', 'success');
+            } else {
+                // Create new automation
+                const newAutomation = await API.createAutomation(finalData);
+                this.automations.set(newAutomation.id, newAutomation);
+                UI.showToast('Automation created successfully', 'success');
+            }
+            
+            this.updateAutomationDisplays();
+            UI.hideModal('automation-modal');
+        } catch (error) {
+            console.error('Save automation error:', error);
+            UI.showToast('Failed to save automation', 'error');
+        }
+    }
+
+    waitForFlowy(callback, maxAttempts = 10, attempt = 0) {
+        if (typeof flowy !== 'undefined') {
+            callback();
+            return;
+        }
+        
+        if (attempt >= maxAttempts) {
+            console.error('Flowy library failed to load after maximum attempts');
+            this.showTraditionalBuilder();
+            return;
+        }
+        
+        setTimeout(() => {
+            this.waitForFlowy(callback, maxAttempts, attempt + 1);
+        }, 500);
+    }
+
+    showTraditionalBuilder(automation = null) {
+        // Use the passed automation or the selected one
+        const automationToEdit = automation || this.selectedAutomation;
+        
+        // Update modal title
+        const modalTitle = automationToEdit ? 'Edit Automation' : 'Create Automation';
+        document.getElementById('automation-modal-title').textContent = modalTitle;
+        
+        // Reset modal content classes
+        const modalContent = document.querySelector('#automation-modal .modal-content');
+        modalContent.classList.remove('flow-designer-modal');
+        
+        const modalBody = document.getElementById('automation-modal-body');
+        modalBody.classList.remove('flow-designer-body');
+        modalBody.innerHTML = ''; // Clear any existing content
+        
+        // Initialize automation builder
+        automationBuilder.init(automationToEdit);
+        
+        // Reset modal footer
+        const modalFooter = document.querySelector('#automation-modal .modal-footer');
+        modalFooter.innerHTML = `
+            <button class="btn btn-secondary" id="cancel-form-btn">Cancel</button>
+            <button class="btn btn-primary" id="save-automation-btn">Save Automation</button>
+        `;
+        
+        // Ensure the button handlers are attached
+        document.getElementById('save-automation-btn').onclick = () => this.saveAutomation();
+        document.getElementById('cancel-form-btn').onclick = () => UI.hideModal('automation-modal');
+        
+        // Show the modal
+        UI.showModal('automation-modal');
+    }
+    
+    async saveFlowAutomation() {
+        // Check if Flowy designer is available
+        if (!window.flowyDesigner) {
+            UI.showToast('Flow designer not available', 'error');
+            return;
+        }
+        
+        // Get flow data
+        const automationData = flowyDesigner.getAutomationData();
+        
+        if (!automationData.name) {
+            UI.showToast('Please enter an automation name', 'error');
+            return;
+        }
+        
+        if (automationData.triggers.length === 0) {
+            UI.showToast('Please add at least one trigger node', 'error');
+            return;
+        }
+        
+        if (automationData.actions.length === 0) {
+            UI.showToast('Please add at least one action node', 'error');
+            return;
+        }
+        
+        const finalAutomationData = automationData;
+        
+        try {
+            if (this.selectedAutomation) {
+                // Update existing automation
+                await API.updateAutomation(this.selectedAutomation.id, finalAutomationData);
+                Object.assign(this.selectedAutomation, finalAutomationData);
+                UI.showToast('Automation updated successfully', 'success');
+            } else {
+                // Create new automation
+                const newAutomation = await API.createAutomation(finalAutomationData);
+                this.automations.set(newAutomation.id, newAutomation);
+                UI.showToast('Automation created successfully', 'success');
+            }
+            
+            this.updateAutomationDisplays();
+            UI.hideModal('automation-modal');
+        } catch (error) {
+            UI.showToast('Failed to save automation', 'error');
+        }
     }
 
     async saveAutomation() {

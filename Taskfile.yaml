@@ -13,7 +13,7 @@ includes:
   bridges: ./bridges/Taskfile.yaml
   esphome: ./esphome-components/Taskfile.yaml
   infra: ./infrastructure/Taskfile.yaml
-  cleanup: ./Taskfile.cleanup.yaml
+  # cleanup: ./Taskfile.cleanup.yaml
 
 tasks:
   default:
@@ -82,7 +82,7 @@ tasks:
   stop:
     desc: Stop all services
     cmds:
-      - task: cleanup:cleanup
+      # - task: cleanup:cleanup
 
   dev:
     desc: Start ALL services in tmux sessions (recommended - one command setup!)
@@ -127,26 +127,39 @@ tasks:
 
   # === DOCKER COMPOSE TASKS ===
   up:
-    desc: Start all services with containers (validates and cleans up first)
+    desc: Start all services with containers (builds images if needed)
     cmds:
-      - task: cleanup:validate
-      - task: cleanup:cleanup:containers
+      # - task: cleanup:validate
+      # - task: cleanup:cleanup:containers
       - |
         if [ ! -f .env ]; then
           cp .env.example .env
           echo "Created .env file from template"
         fi
       - |
+        echo "Checking for required images..."
+        MISSING_IMAGES=0
+        for img in nats-discovery nats-management-ui nats-health-monitor; do
+          if ! {{.CONTAINER_TOOL}} image exists $img:latest; then
+            echo "⚠️  Image $img:latest not found"
+            MISSING_IMAGES=1
+          fi
+        done
+        if [ $MISSING_IMAGES -eq 1 ]; then
+          echo "Building missing images..."
+          task build-quick
+        fi
+      - |
         echo "Starting services with {{.CONTAINER_TOOL}}..."
         {{.CONTAINER_TOOL}} compose up -d
-      - task: cleanup:wait-healthy
-      - task: cleanup:show-status
+      # - task: cleanup:wait-healthy
+      # - task: cleanup:show-status
 
   up:nats:
     desc: Start only NATS server in container (avoids build issues)
     cmds:
-      - task: cleanup:validate
-      - task: cleanup:cleanup:containers
+      # - task: cleanup:validate
+      # - task: cleanup:cleanup:containers
       - |
         echo "Starting NATS server with {{.CONTAINER_TOOL}}..."
         {{.CONTAINER_TOOL}} compose -f docker-compose.nats-only.yml up -d
@@ -167,8 +180,8 @@ tasks:
   up:with-simulator:
     desc: Start all services including device simulator (requires local image)
     cmds:
-      - task: cleanup:validate
-      - task: cleanup:cleanup:containers
+      # - task: cleanup:validate
+      # - task: cleanup:cleanup:containers
       - |
         if [ ! -f .env ]; then
           cp .env.example .env
@@ -177,8 +190,8 @@ tasks:
       - |
         echo "Starting all services including device simulator..."
         {{.CONTAINER_TOOL}} compose --profile full up -d
-      - task: cleanup:wait-healthy
-      - task: cleanup:show-status
+      # - task: cleanup:wait-healthy
+      # - task: cleanup:show-status
 
   up:full:
     desc: Start all services including Home Assistant
@@ -220,7 +233,7 @@ tasks:
   down:
     desc: Stop all containers and clean up
     cmds:
-      - task: cleanup:cleanup
+      # - task: cleanup:cleanup
 
   logs:
     desc: View Docker Compose logs
@@ -228,9 +241,36 @@ tasks:
       - '{{.CONTAINER_TOOL}} compose logs -f {{.CLI_ARGS}}'
 
   build:
-    desc: Build all Docker images
+    desc: Build all container images
+    cmds:
+      - echo "Building container images..."
+      - '{{.CONTAINER_TOOL}} compose build'
+      - echo "✅ Container images built successfully!"
+      - echo ""
+      - echo "To build local Go binaries, run:"
+      - echo "  task services:build"
+
+  build-all:
+    desc: Alias for build task
+    aliases: [rebuild]
+    cmds:
+      - task: build
+
+  build-quick:
+    desc: Build only container images (skip local artifacts)
     cmds:
       - '{{.CONTAINER_TOOL}} compose build'
+
+  build-local:
+    desc: Build local Go binaries
+    cmds:
+      - |
+        echo "Building local Go binaries..."
+        cd services/discovery && go build -o bin/discovery-service .
+        cd services/health-monitor && go build -o build/health-monitor .
+        cd services/management-ui && go build -o nats-home-management-ui .
+        cd services/device-simulator && go build -o bin/device-simulator .
+        echo "✅ Local binaries built successfully!"
 
   # === MONITORING TASKS ===
   monitor:
@@ -246,7 +286,7 @@ tasks:
   status:
     desc: Check status of all services
     cmds:
-      - task: cleanup:show-status
+      # - task: cleanup:show-status
 
   # === TESTING TASKS ===
   test:
@@ -326,14 +366,14 @@ tasks:
   fix:
     desc: Fix common issues (ports, containers, permissions)
     cmds:
-      - task: cleanup:cleanup
-      - task: cleanup:fix-permissions
+      # - task: cleanup:cleanup
+      # - task: cleanup:fix-permissions
       - echo "✅ Common issues fixed. Try 'task up' again."
 
   validate:
     desc: Validate environment is ready for running services
     cmds:
-      - task: cleanup:validate
+      # - task: cleanup:validate
 
   reset:
     desc: Complete reset - removes all data and starts fresh
@@ -346,8 +386,8 @@ tasks:
         echo ""
         read -p "Are you sure? Type 'yes' to continue: " -r
         if [[ $REPLY == "yes" ]]; then
-          task cleanup:cleanup
-          task cleanup:cleanup:volumes
+          # task cleanup:cleanup
+          # task cleanup:cleanup:volumes
           echo "✅ Reset complete. Run 'task up' to start fresh."
         else
           echo "❌ Reset cancelled"

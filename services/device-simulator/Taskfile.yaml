@@ -18,7 +18,7 @@ tasks:
   build:
     desc: Build the device simulator binary
     cmds:
-      - go build -o bin/device-simulator main.go
+      - go build -o bin/device-simulator .
 
   test:
     desc: Run tests

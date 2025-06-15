@@ -17,10 +17,23 @@ class SceneEditor {
 
         // Initialize device states from scene
         this.deviceStates.clear();
-        if (scene && scene.devices) {
-            scene.devices.forEach(device => {
-                this.deviceStates.set(device.device_id, device.state);
-            });
+        if (scene) {
+            if (scene.devices) {
+                // Frontend format
+                scene.devices.forEach(device => {
+                    this.deviceStates.set(device.device_id, device.state);
+                });
+            } else if (scene.entities) {
+                // Backend format - convert to frontend format
+                this.currentScene.devices = [];
+                scene.entities.forEach(entity => {
+                    this.deviceStates.set(entity.device_id, entity.state);
+                    this.currentScene.devices.push({
+                        device_id: entity.device_id,
+                        state: entity.state
+                    });
+                });
+            }
         }
 
         this.render();
@@ -76,7 +89,7 @@ class SceneEditor {
                 <div class="scene-preview">
                     <h4>Preview</h4>
                     <div class="preview-content" id="scene-preview">
-                        ${this.generatePreview()}
+                        <!-- Preview will be generated after render -->
                     </div>
                 </div>
             </div>
@@ -88,6 +101,9 @@ class SceneEditor {
         
         // Initialize icon selection
         this.initIconSelector();
+        
+        // Generate initial preview now that DOM is ready
+        this.updatePreview();
     }
 
     renderIconOptions() {
@@ -372,7 +388,9 @@ class SceneEditor {
     }
 
     generatePreview() {
-        const name = document.getElementById('scene-name').value || 'Unnamed Scene';
+        // Use current scene data if DOM elements don't exist yet
+        const nameElement = document.getElementById('scene-name');
+        const name = nameElement ? nameElement.value : (this.currentScene.name || 'Unnamed Scene');
         const icon = this.currentScene.icon || 'fa-home';
         
         if (this.deviceStates.size === 0) {

@@ -1,0 +1,69 @@
+name: Cloud UI Deployment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cloud/web-ui/**'
+      - '.github/workflows/cloud-ui.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cloud/web-ui/**'
+      - '.github/workflows/cloud-ui.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    if: false  # Enable when cloud UI is implemented
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'cloud/web-ui/package-lock.json'
+      
+      - name: Install dependencies
+        run: |
+          cd cloud/web-ui
+          npm ci
+      
+      - name: Run tests
+        run: |
+          cd cloud/web-ui
+          npm test
+      
+      - name: Build
+        run: |
+          cd cloud/web-ui
+          npm run build
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy to Vercel
+        run: |
+          echo "TODO: Deploy cloud UI to Vercel"
+          echo "This will be implemented when the cloud UI is ready"
+      
+      # Alternative: Deploy to Netlify
+      # - name: Deploy to Netlify
+      #   uses: nwtgck/actions-netlify@v2.0
+      #   with:
+      #     publish-dir: './cloud/web-ui/dist'
+      #     production-branch: main
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+      #     deploy-message: "Deploy from GitHub Actions"
+      #   env:
+      #     NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      #     NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

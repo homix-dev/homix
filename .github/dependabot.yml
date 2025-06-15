@@ -1,0 +1,64 @@
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "calmera"
+    commit-message:
+      prefix: "ci"
+
+  # Go modules - Edge Server
+  - package-ecosystem: "gomod"
+    directory: "/edge"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "calmera"
+    commit-message:
+      prefix: "deps"
+    groups:
+      nats:
+        patterns:
+          - "nats.io/*"
+      
+  # Go modules - Device Simulator
+  - package-ecosystem: "gomod"
+    directory: "/services/device-simulator"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "calmera"
+    commit-message:
+      prefix: "deps"
+
+  # Docker
+  - package-ecosystem: "docker"
+    directory: "/edge"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "calmera"
+    commit-message:
+      prefix: "docker"
+      
+  - package-ecosystem: "docker"
+    directory: "/services/device-simulator"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "calmera"
+    commit-message:
+      prefix: "docker"
+
+  # NPM - Cloud UI (when implemented)
+  # - package-ecosystem: "npm"
+  #   directory: "/cloud/web-ui"
+  #   schedule:
+  #     interval: "weekly"
+  #   reviewers:
+  #     - "calmera"
+  #   commit-message:
+  #     prefix: "deps"

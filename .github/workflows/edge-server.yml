@@ -60,7 +60,7 @@ jobs:
           cache-dependency-path: 'edge/go.sum'
       
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
           working-directory: edge

@@ -1,0 +1,71 @@
+{
+  "version": "1.0",
+  "devices": [
+    {
+      "id": "sim_motion_hallway",
+      "type": "motion",
+      "name": "Hallway Motion Sensor",
+      "room": "Hallway",
+      "state": {
+        "motion": false
+      },
+      "online": true
+    },
+    {
+      "id": "sim_light_hallway",
+      "type": "light",
+      "name": "Hallway Light",
+      "room": "Hallway",
+      "state": {
+        "state": "off",
+        "brightness": 100
+      },
+      "online": true
+    },
+    {
+      "id": "sim_sensor_living",
+      "type": "sensor",
+      "name": "Living Room Sensor",
+      "room": "Living Room",
+      "state": {
+        "temperature": 22.5,
+        "humidity": 45.0
+      },
+      "online": true
+    },
+    {
+      "id": "sim_thermostat_living",
+      "type": "thermostat",
+      "name": "Living Room Thermostat",
+      "room": "Living Room",
+      "state": {
+        "mode": "heat",
+        "current_temperature": 22.0,
+        "target_temperature": 23.0,
+        "fan_mode": "auto"
+      },
+      "online": true
+    },
+    {
+      "id": "sim_lock_front",
+      "type": "lock",
+      "name": "Front Door Lock",
+      "room": "Entrance",
+      "state": {
+        "state": "locked"
+      },
+      "online": true
+    },
+    {
+      "id": "sim_cover_bedroom",
+      "type": "cover",
+      "name": "Bedroom Blinds",
+      "room": "Bedroom",
+      "state": {
+        "state": "closed",
+        "position": 0
+      },
+      "online": true
+    }
+  ]
+}

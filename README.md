@@ -41,6 +41,7 @@ The system uses a microservices architecture with NATS as the central messaging 
 - **Zigbee2MQTT Bridge**: Bridge for Zigbee devices via Zigbee2MQTT ✅
 - **Health Monitoring**: Real-time device health monitoring dashboard ✅
 - **Management UI**: Web-based management interface ✅
+- **Device Simulator**: Web-based device simulation for testing automations ✅
 
 ## Getting Started
 
@@ -50,6 +51,23 @@ The system uses a microservices architecture with NATS as the central messaging 
 - Home Assistant 2024.6+
 - ESPHome 2024.6+
 - Python 3.11+ / Go 1.21+
+- Docker or Podman (for containerized services)
+- Task (for build automation) - [Install Task](https://taskfile.dev/installation/)
+
+### Container Runtime Configuration
+
+This project supports both Docker and Podman as container runtimes. By default, it uses Podman. To switch between them:
+
+```bash
+# Use Podman (default)
+export CONTAINER_TOOL=podman
+
+# Use Docker
+export CONTAINER_TOOL=docker
+
+# Or set in .env file (already configured for Podman)
+cat .env | grep CONTAINER_TOOL
+```
 
 ### Quick Start
 
@@ -75,8 +93,13 @@ task dev
 # Or run services individually
 task infra:start-dev         # Start NATS server
 task services:discovery:run  # Start discovery service
-task services:health:run     # Start health monitor
+task services:health:run     # Start health monitor (http://localhost:8082)
 task services:ui:run         # Start management UI (http://localhost:8081)
+task services:simulator:run  # Start device simulator (http://localhost:8083)
+
+# Or run with containers (uses Podman by default)
+task up                      # Start all services with containers
+task down                    # Stop all containers
 ```
 
 4. Test the system:
@@ -191,6 +214,7 @@ home.events.{type}                    # System events
 - ✅ Web-based management UI with real-time updates
 - ✅ Device health monitoring dashboard
 - ✅ Quick actions and scene support
+- ✅ Device simulator for testing automations
 
 ### Roadmap
 

@@ -76,10 +76,22 @@ func (m *Monitor) Start(ctx context.Context) error {
 	// Start cleanup loop
 	go m.cleanupLoop(ctx)
 
+	// Publish service started event
+	m.publishEvent("service_started", map[string]interface{}{
+		"service": "health-monitor",
+		"version": "1.0.0",
+	})
+
 	// Wait for context cancellation
 	<-ctx.Done()
 
 	m.logger.Info("Shutting down monitor...")
+	
+	// Publish service stopped event
+	m.publishEvent("service_stopped", map[string]interface{}{
+		"service": "health-monitor",
+	})
+	
 	return m.server.Stop(context.Background())
 }
 
@@ -507,4 +519,15 @@ func (m *Monitor) GetDeviceSummary() Summary {
 	}
 
 	return summary
+}
+
+// publishEvent publishes a system event
+func (m *Monitor) publishEvent(eventType string, data interface{}) {
+	event := map[string]interface{}{
+		"timestamp":  time.Now().Format(time.RFC3339),
+		"event_type": eventType,
+		"data":       data,
+	}
+	payload, _ := json.Marshal(event)
+	m.natsConn.Publish(fmt.Sprintf("home.events.system.%s", eventType), payload)
 }

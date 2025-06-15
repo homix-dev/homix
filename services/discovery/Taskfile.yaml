@@ -7,6 +7,7 @@ vars:
   NATS_SERVER: '{{default "nats://localhost:4222" .NATS_SERVER}}'
   NATS_USER: '{{default "home" .NATS_USER}}'
   NATS_PASS: '{{default "changeme" .NATS_PASS}}'
+  CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
 
 tasks:
   build:
@@ -128,14 +129,14 @@ tasks:
   docker-build:
     desc: Build Docker image
     cmds:
-      - docker build -t {{.APP_NAME}}:latest .
+      - '{{.CONTAINER_TOOL}} build -t {{.APP_NAME}}:latest .'
 
   docker-run:
     desc: Run in Docker
     deps: [docker-build]
     cmds:
       - |
-        docker run --rm \
+        {{.CONTAINER_TOOL}} run --rm \
           -e NATS_URL={{.NATS_SERVER}} \
           -e NATS_USER={{.NATS_USER}} \
           -e NATS_PASSWORD={{.NATS_PASS}} \

@@ -799,10 +799,34 @@ func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetEvents(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement event retrieval
+	// Parse query parameters
+	limit := 100 // Default limit
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 500 {
+			limit = parsed
+		}
+	}
+	
+	// Filter by type if specified
+	filterType := r.URL.Query().Get("type")
+	
+	s.eventsMu.RLock()
+	defer s.eventsMu.RUnlock()
+	
+	events := make([]*Event, 0, limit)
+	for _, event := range s.events {
+		if filterType != "" && event.Type != filterType {
+			continue
+		}
+		events = append(events, event)
+		if len(events) >= limit {
+			break
+		}
+	}
+	
 	s.sendJSON(w, APIResponse{
 		Success: true,
-		Data:    []interface{}{},
+		Data:    events,
 	})
 }
 

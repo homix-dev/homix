@@ -4,7 +4,8 @@ vars:
   NATS_SERVER: "nats://localhost:4222"
   NATS_USER: "home"
   NATS_PASS: "changeme"
-  CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
+  # Prefer podman if available, fallback to docker
+  CONTAINER_TOOL: '{{default "podman" .CONTAINER_TOOL}}'
 
 includes:
   services: ./services/Taskfile.yaml
@@ -12,6 +13,7 @@ includes:
   bridges: ./bridges/Taskfile.yaml
   esphome: ./esphome-components/Taskfile.yaml
   infra: ./infrastructure/Taskfile.yaml
+  cleanup: ./Taskfile.cleanup.yaml
 
 tasks:
   default:
@@ -41,6 +43,7 @@ tasks:
       - cd services/discovery && go mod download || echo "⚠️  Failed to download Go dependencies"
       - cd services/management-ui && go mod download || echo "⚠️  Failed to download Go dependencies"
       - cd services/health-monitor && go mod download || echo "⚠️  Failed to download Go dependencies"
+      - cd services/device-simulator && go mod download || echo "⚠️  Failed to download Go dependencies"
       - echo "✅ Dependencies installed"
 
   # === START/STOP TASKS ===
@@ -63,6 +66,9 @@ tasks:
         echo "Terminal 3 - Management UI:"
         echo "  cd services/management-ui && go run main.go"
         echo ""
+        echo "Terminal 4 - Device Simulator:"
+        echo "  cd services/device-simulator && go run main.go"
+        echo ""
         echo "Or use one of these alternatives:"
         echo "  • 'task dev' - Run all in tmux (recommended)"
         echo "  • 'task up' - Run with Docker Compose"
@@ -70,15 +76,13 @@ tasks:
         echo "Services will be available at:"
         echo "  • Management UI: http://localhost:8081 (admin/admin)"
         echo "  • Health Monitor: http://localhost:8082"
+        echo "  • Device Simulator: http://localhost:8083"
         echo "  • NATS Monitor: http://localhost:8222"
 
   stop:
     desc: Stop all services
     cmds:
-      - pkill -f "go run main.go" || echo "No Go services running"
-      - task: infra:stop
-      - '{{.CONTAINER_TOOL}} compose down 2>/dev/null || true'
-      - echo "✅ All services stopped"
+      - task: cleanup:cleanup
 
   dev:
     desc: Start ALL services in tmux sessions (recommended - one command setup!)
@@ -105,37 +109,76 @@ tasks:
         tmux new-window -t nats-ha -n management-ui
         tmux send-keys -t nats-ha:management-ui "cd services/management-ui && go run main.go" C-m
         
+        tmux new-window -t nats-ha -n device-simulator
+        tmux send-keys -t nats-ha:device-simulator "cd services/device-simulator && go run main.go" C-m
+        
         echo "🚀 All services started in tmux session 'nats-ha'"
         echo ""
         echo "Available at:"
-        echo "  • Management UI: http://localhost:8081 (admin/admin)"
+        echo "  • Management UI (Go): http://localhost:8081 (admin/admin)"
+        echo "  • Management UI (React): http://localhost:3000"
         echo "  • Health Monitor: http://localhost:8082"
+        echo "  • Device Simulator: http://localhost:8083"
         echo "  • NATS Monitor: http://localhost:8222"
         echo ""
         echo "To attach to session: tmux attach -t nats-ha"
-        echo "To switch windows: Ctrl+b then 0/1/2"
+        echo "To switch windows: Ctrl+b then 0/1/2/3/4/5"
         echo "To detach: Ctrl+b then d"
 
   # === DOCKER COMPOSE TASKS ===
   up:
-    desc: Start all services with Docker Compose
+    desc: Start all services with containers (validates and cleans up first)
     cmds:
+      - task: cleanup:validate
+      - task: cleanup:cleanup:containers
       - |
         if [ ! -f .env ]; then
           cp .env.example .env
           echo "Created .env file from template"
         fi
-      - '{{.CONTAINER_TOOL}} compose up -d'
       - |
-        echo "🚀 Services starting with Docker Compose..."
+        echo "Starting services with {{.CONTAINER_TOOL}}..."
+        {{.CONTAINER_TOOL}} compose up -d
+      - task: cleanup:wait-healthy
+      - task: cleanup:show-status
+
+  up:nats:
+    desc: Start only NATS server in container (avoids build issues)
+    cmds:
+      - task: cleanup:validate
+      - task: cleanup:cleanup:containers
+      - |
+        echo "Starting NATS server with {{.CONTAINER_TOOL}}..."
+        {{.CONTAINER_TOOL}} compose -f docker-compose.nats-only.yml up -d
+      - |
+        echo "Waiting for NATS to be healthy..."
+        sleep 5
+      - |
         echo ""
-        echo "Available at:"
-        echo "  • Management UI: http://localhost:8081 (admin/admin)"
-        echo "  • Health Monitor: http://localhost:8082"
-        echo "  • NATS Monitor: http://localhost:8222"
+        echo "✅ NATS server is running!"
         echo ""
-        echo "View logs: task logs"
-        echo "Stop services: task down"
+        echo "Now start the other services locally:"
+        echo "  task services:simulator:run  # Device Simulator"
+        echo "  task services:ui:run         # Management UI" 
+        echo "  task services:health:run     # Health Monitor"
+        echo ""
+        echo "Or use: ./run-local.sh"
+
+  up:with-simulator:
+    desc: Start all services including device simulator (requires local image)
+    cmds:
+      - task: cleanup:validate
+      - task: cleanup:cleanup:containers
+      - |
+        if [ ! -f .env ]; then
+          cp .env.example .env
+          echo "Created .env file from template"
+        fi
+      - |
+        echo "Starting all services including device simulator..."
+        {{.CONTAINER_TOOL}} compose --profile full up -d
+      - task: cleanup:wait-healthy
+      - task: cleanup:show-status
 
   up:full:
     desc: Start all services including Home Assistant
@@ -175,10 +218,9 @@ tasks:
         echo "Using images from: ghcr.io/$${GITHUB_REPOSITORY:-calmera/nats-home-automation}"
 
   down:
-    desc: Stop Docker Compose services
+    desc: Stop all containers and clean up
     cmds:
-      - '{{.CONTAINER_TOOL}} compose down'
-      - '{{.CONTAINER_TOOL}} compose -f docker-compose.full.yml down 2>/dev/null || true'
+      - task: cleanup:cleanup
 
   logs:
     desc: View Docker Compose logs
@@ -204,19 +246,7 @@ tasks:
   status:
     desc: Check status of all services
     cmds:
-      - |
-        echo "=== NATS Status ==="
-        nats --server={{.NATS_SERVER}} --user={{.NATS_USER}} --password={{.NATS_PASS}} server check connection 2>/dev/null && echo "✅ NATS: Connected" || echo "❌ NATS: Not available"
-        
-        echo ""
-        echo "=== Web Services ==="
-        curl -s http://localhost:8081 >/dev/null 2>&1 && echo "✅ Management UI: http://localhost:8081" || echo "❌ Management UI: Not available"
-        curl -s http://localhost:8082 >/dev/null 2>&1 && echo "✅ Health Monitor: http://localhost:8082" || echo "❌ Health Monitor: Not available"
-        curl -s http://localhost:8222/healthz >/dev/null 2>&1 && echo "✅ NATS Monitor: http://localhost:8222" || echo "❌ NATS Monitor: Not available"
-        
-        echo ""
-        echo "=== Containers ==="
-        {{.CONTAINER_TOOL}} ps --format "table {{.Names}}\t{{.Status}}" | grep -E "(nats|home)" || echo "No containers running"
+      - task: cleanup:show-status
 
   # === TESTING TASKS ===
   test:
@@ -239,7 +269,7 @@ tasks:
   build-images:
     desc: Build container images locally
     vars:
-      SERVICES: '{{default "discovery,management-ui,health-monitor" .SERVICES}}'
+      SERVICES: '{{default "discovery,management-ui,health-monitor,device-simulator" .SERVICES}}'
       REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
       IMAGE_PREFIX: '{{default "calmera/nats-home-automation" .IMAGE_PREFIX}}'
     cmds:
@@ -255,7 +285,7 @@ tasks:
   push-images:
     desc: Push container images to registry (requires login)
     vars:
-      SERVICES: '{{default "discovery,management-ui,health-monitor" .SERVICES}}'
+      SERVICES: '{{default "discovery,management-ui,health-monitor,device-simulator" .SERVICES}}'
       REGISTRY: '{{default "ghcr.io" .REGISTRY}}'
       IMAGE_PREFIX: '{{default "calmera/nats-home-automation" .IMAGE_PREFIX}}'
       TAG: '{{default "latest" .TAG}}'
@@ -291,6 +321,37 @@ tasks:
       - find . -name "coverage.*" -type f -delete
       - find . -name ".task" -type d -exec rm -rf {} + 2>/dev/null || true
       - echo "✅ Cleanup complete"
+
+  # === TROUBLESHOOTING TASKS ===
+  fix:
+    desc: Fix common issues (ports, containers, permissions)
+    cmds:
+      - task: cleanup:cleanup
+      - task: cleanup:fix-permissions
+      - echo "✅ Common issues fixed. Try 'task up' again."
+
+  validate:
+    desc: Validate environment is ready for running services
+    cmds:
+      - task: cleanup:validate
+
+  reset:
+    desc: Complete reset - removes all data and starts fresh
+    cmds:
+      - |
+        echo "⚠️  This will delete ALL data including:"
+        echo "  • All containers"
+        echo "  • All volumes (persistent data)"
+        echo "  • All networks"
+        echo ""
+        read -p "Are you sure? Type 'yes' to continue: " -r
+        if [[ $REPLY == "yes" ]]; then
+          task cleanup:cleanup
+          task cleanup:cleanup:volumes
+          echo "✅ Reset complete. Run 'task up' to start fresh."
+        else
+          echo "❌ Reset cancelled"
+        fi
 
   nats:
     desc: Open NATS CLI with project credentials

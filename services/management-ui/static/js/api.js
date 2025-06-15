@@ -149,6 +149,12 @@ class APIClient {
         const query = type ? `?type=${type}` : '';
         return this.request('GET', `/system/events${query}`);
     }
+    
+    async getSystemEvents(limit = 100, type = '') {
+        let query = `?limit=${limit}`;
+        if (type) query += `&type=${type}`;
+        return this.request('GET', `/system/events${query}`);
+    }
 
     // User/Auth endpoints
     async login(username, password) {

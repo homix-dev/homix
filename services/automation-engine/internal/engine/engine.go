@@ -70,11 +70,22 @@ func (e *Engine) Start(ctx context.Context) error {
 	
 	e.logger.Info("Automation engine started")
 	
+	// Publish service started event
+	e.publishEvent("service_started", map[string]interface{}{
+		"service": "automation-engine",
+		"version": "1.0.0",
+	})
+	
 	// Wait for context cancellation
 	<-ctx.Done()
 	
 	e.updateTicker.Stop()
 	e.logger.Info("Automation engine stopped")
+	
+	// Publish service stopped event
+	e.publishEvent("service_stopped", map[string]interface{}{
+		"service": "automation-engine",
+	})
 	
 	return nil
 }
@@ -434,4 +445,15 @@ func (e *Engine) executeNotification(action Action) error {
 	
 	e.logger.Infof("Sent notification: %s", action.Data["title"])
 	return nil
+}
+
+// publishEvent publishes a system event
+func (e *Engine) publishEvent(eventType string, data interface{}) {
+	event := map[string]interface{}{
+		"timestamp":  time.Now().Format(time.RFC3339),
+		"event_type": eventType,
+		"data":       data,
+	}
+	payload, _ := json.Marshal(event)
+	e.natsConn.Publish(fmt.Sprintf("home.events.system.%s", eventType), payload)
 }

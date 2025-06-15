@@ -44,10 +44,23 @@ MANIFEST
 bin/
 services/discovery/discovery
 services/discovery/discovery-service
+services/discovery/bin/
+services/discovery/models.test
+services/automation-engine/automation-engine
+services/device-simulator/device-simulator
+services/management-ui/management-ui
+services/management-ui/management-ui-*
+services/management-ui/nats-home-management-ui
+services/health-monitor/health-monitor
+services/health-monitor/build/
+services/*/build/
+services/*/bin/
 tools/nats-ha-cli/nats-ha
+tools/*/bin/
 coverage.html
 coverage.out
 *.log
+go.sum.backup
 
 # ESPHome
 .esphome/
@@ -85,12 +98,29 @@ ENV/
 nats-server.log
 nats-data/
 jetstream/
+/infrastructure/data/
+/infrastructure/infrastructure/
+/data/
+*.creds
+cert.pem
+key.pem
 
 # Temporary files
 *.tmp
 *.bak
 .cache/
 tmp/
+
+# Test artifacts
+test-*.html
+test-*.js
+test-*.sh
+test-*.md
+debug-*.js
+check-*.html
+
+# Local configuration
+CLAUDE.local.md
 
 # Air (Go hot reload)
 .air.toml.tmp

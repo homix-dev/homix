@@ -1,0 +1,45 @@
+# Minimal compose file - just NATS server
+# Run other services locally to avoid image build issues
+
+services:
+  # NATS Server - Core messaging infrastructure
+  nats:
+    image: docker.io/library/nats:2.11-alpine
+    container_name: nats-home-automation
+    ports:
+      - "4222:4222"   # Client connections
+      - "8222:8222"   # HTTP management
+      - "6222:6222"   # Cluster
+      - "9222:9222"   # WebSocket
+    volumes:
+      - ./infrastructure/nats-server-dev.conf:/etc/nats/nats-server.conf:ro
+      - ./infrastructure/data:/data
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nats-network
+
+  # NATS Initializer - Creates KV buckets
+  nats-init:
+    image: docker.io/library/natsio/nats-box:latest
+    container_name: nats-init
+    depends_on:
+      nats:
+        condition: service_healthy
+    volumes:
+      - ./infrastructure/init-nats.sh:/init-nats.sh:ro
+    command: ["sh", "/init-nats.sh"]
+    environment:
+      - NATS_URL=nats://home:changeme@nats:4222
+    networks:
+      - nats-network
+    restart: "no"
+
+networks:
+  nats-network:
+    driver: bridge

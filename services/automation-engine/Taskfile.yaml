@@ -4,6 +4,7 @@ vars:
   APP_NAME: automation-engine
   GO_FILES:
     sh: find . -name '*.go' -not -path "./vendor/*"
+  CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
 
 tasks:
   default:
@@ -50,10 +51,10 @@ tasks:
   docker:build:
     desc: Build Docker image
     cmds:
-      - docker build -t nats-home/{{.APP_NAME}}:latest .
+      - '{{.CONTAINER_TOOL}} build -t nats-home/{{.APP_NAME}}:latest .'
 
   docker:run:
     desc: Run in Docker
     deps: [docker:build]
     cmds:
-      - docker run --rm -it --network host -v {{.PWD}}/config.yaml:/config.yaml nats-home/{{.APP_NAME}}:latest
+      - '{{.CONTAINER_TOOL}} run --rm -it --network host -v {{.PWD}}/config.yaml:/config.yaml nats-home/{{.APP_NAME}}:latest'

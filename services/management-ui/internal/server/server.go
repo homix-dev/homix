@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,8 @@ type Server struct {
 	automations map[string]*Automation
 	scenes      map[string]*Scene
 	sessions    map[string]*Session
+	events      []*Event
+	eventsMu    sync.RWMutex
 	mu          sync.RWMutex
 	
 	// WebSocket clients
@@ -70,6 +73,7 @@ func New(config *Config) (*Server, error) {
 		automations: make(map[string]*Automation),
 		scenes:      make(map[string]*Scene),
 		sessions:    make(map[string]*Session),
+		events:      make([]*Event, 0, 1000), // Pre-allocate for 1000 events
 		wsClients:   make(map[string]*wsClient),
 		wsUpgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
@@ -119,8 +123,19 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}()
 
+	// Publish service started event
+	s.publishEvent("service_started", map[string]interface{}{
+		"service": "management-ui",
+		"version": "1.0.0",
+	})
+
 	// Wait for context cancellation
 	<-ctx.Done()
+
+	// Publish service stopped event
+	s.publishEvent("service_stopped", map[string]interface{}{
+		"service": "management-ui",
+	})
 
 	// Shutdown server
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -169,7 +184,7 @@ func (s *Server) initJetStream() error {
 		name string
 		ttl  time.Duration
 	}{
-		{"devices", 0},
+		{"devices", 2 * time.Minute}, // Devices expire after 2 minutes without updates
 		{"device-configs", 0},
 		{"automations", 0},
 		{"scenes", 0},
@@ -255,12 +270,12 @@ func (s *Server) loadData() error {
 
 func (s *Server) startSubscriptions() error {
 	// Subscribe to device state updates
-	if _, err := s.natsConn.Subscribe("home.devices.*.*.state", s.handleDeviceState); err != nil {
+	if _, err := s.natsConn.Subscribe("home.devices.*.state", s.handleDeviceState); err != nil {
 		return err
 	}
 
 	// Subscribe to device announcements
-	if _, err := s.natsConn.Subscribe("home.devices.*.*.announce", s.handleDeviceAnnounce); err != nil {
+	if _, err := s.natsConn.Subscribe("home.devices.*.announce", s.handleDeviceAnnounce); err != nil {
 		return err
 	}
 
@@ -295,6 +310,16 @@ func (s *Server) handleDeviceState(msg *nats.Msg) {
 		device.UpdatedAt = time.Now()
 	}
 	s.mu.Unlock()
+
+	// Create state change event
+	event := Event{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Type:      "device_state_changed",
+		Source:    msg.Subject,
+		Data:      state,
+		Timestamp: time.Now(),
+	}
+	s.storeEvent(&event)
 
 	// Broadcast update to WebSocket clients
 	s.broadcastDeviceUpdate(deviceID, state)
@@ -345,24 +370,60 @@ func (s *Server) handleDeviceAnnounce(msg *nats.Msg) {
 	// Save to KV store
 	s.saveDevice(device)
 
+	// Create device announced event
+	event := Event{
+		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		Type:      "device_announced",
+		Source:    msg.Subject,
+		Data:      announce,
+		Timestamp: time.Now(),
+	}
+	s.storeEvent(&event)
+
 	s.logger.Infof("Device announced: %s", deviceID)
 }
 
 func (s *Server) handleEvent(msg *nats.Msg) {
-	// Log event for now
-	s.logger.Debugf("Event received: %s", msg.Subject)
+	// Parse event type from subject
+	parts := strings.Split(msg.Subject, ".")
+	eventType := "unknown"
+	if len(parts) >= 4 {
+		eventType = parts[3] // e.g., home.events.system.service_started -> service_started
+	}
 	
-	// TODO: Store events in time-series database or event store
-	// For now, just broadcast to WebSocket clients
+	// Try to parse the data
+	var eventData map[string]interface{}
+	if err := json.Unmarshal(msg.Data, &eventData); err != nil {
+		// If parsing fails, store raw data
+		eventData = map[string]interface{}{"raw": string(msg.Data)}
+	}
+	
 	event := Event{
 		ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
-		Type:      "system",
+		Type:      eventType,
 		Source:    msg.Subject,
-		Data:      map[string]interface{}{"raw": string(msg.Data)},
+		Data:      eventData,
 		Timestamp: time.Now(),
 	}
 
+	// Store event
+	s.storeEvent(&event)
+	
+	// Broadcast to WebSocket clients
 	s.broadcastEvent(event)
+}
+
+func (s *Server) storeEvent(event *Event) {
+	s.eventsMu.Lock()
+	defer s.eventsMu.Unlock()
+	
+	// Add to the beginning of the slice (newest first)
+	s.events = append([]*Event{event}, s.events...)
+	
+	// Keep only last 500 events in memory
+	if len(s.events) > 500 {
+		s.events = s.events[:500]
+	}
 }
 
 func (s *Server) saveDevice(device *Device) {
@@ -423,4 +484,15 @@ func (s *Server) broadcast(message interface{}) {
 			delete(s.wsClients, id)
 		}
 	}
+}
+
+// publishEvent publishes a system event
+func (s *Server) publishEvent(eventType string, data interface{}) {
+	event := map[string]interface{}{
+		"timestamp":  time.Now().Format(time.RFC3339),
+		"event_type": eventType,
+		"data":       data,
+	}
+	payload, _ := json.Marshal(event)
+	s.natsConn.Publish(fmt.Sprintf("home.events.system.%s", eventType), payload)
 }

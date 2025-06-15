@@ -586,7 +586,7 @@ class DeviceMonitoring {
         document.getElementById('system-uptime').textContent = `Uptime: ${uptimeHours}h`;
         
         // Check WebSocket connection
-        const wsConnected = window.wsManager && window.wsManager.isConnected();
+        const wsConnected = window.wsManager && window.wsManager.isConnected;
         document.getElementById('network-status').textContent = wsConnected ? 'Connected' : 'Disconnected';
         
         // Mock latency (in real app, measure actual NATS latency)

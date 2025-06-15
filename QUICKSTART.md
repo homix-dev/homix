@@ -108,8 +108,8 @@ The automation runs locally on your edge server - no cloud dependency!
 # Check logs
 docker logs nats-home-edge
 
-# Verify credentials
-nats --creds ~/nats-home.creds server list
+# Test credentials
+nats --server tls://connect.ngs.global --creds ~/nats-home.creds pub home.test.connection "test-$(date +%s)"
 ```
 
 ### Devices not appearing

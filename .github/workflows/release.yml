@@ -94,7 +94,7 @@ jobs:
           echo "tag=${GITHUB_REF_NAME#refs/tags/}" >> $GITHUB_ENV
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
@@ -112,7 +112,7 @@ jobs:
           cp docker-compose.yml docker-compose-${{ env.tag }}.yml
 
       - name: Upload release assets
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             docker-compose-${{ env.tag }}.yml

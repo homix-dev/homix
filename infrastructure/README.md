@@ -34,11 +34,11 @@ The edge server includes all infrastructure:
 ```bash
 # Using Docker
 docker run -d \
-  --name nova-edge \
+  --name homix-edge \
   --network host \
   -v ~/.synadia/NGS-Home-daan.creds:/creds/cloud.creds:ro \
   -e HOME_NAME="My Home" \
-  ghcr.io/calmera/nova-edge:latest
+  ghcr.io/calmera/homix-edge:latest
 
 # Using Task
 task edge:start
@@ -89,7 +89,7 @@ nats --server tls://connect.ngs.global --creds ~/.synadia/NGS-Home-daan.creds su
 3. **Verify credentials**: Check file exists and is readable
 
 ### Edge Server Issues
-1. **Check logs**: `docker logs nova-edge`
+1. **Check logs**: `docker logs homix-edge`
 2. **Verify ports**: Port 4222 must be available for local devices
 3. **Test local connection**: `nats --server nats://localhost:4222 pub test.msg hello`
 

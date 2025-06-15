@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calmera/nats-home-automation/services/device-provisioner/internal/models"
+	"github.com/calmera/homix/services/device-provisioner/internal/models"
 	"github.com/nats-io/jwt/v2"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"

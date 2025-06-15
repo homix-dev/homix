@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Nova - Installer Script
+# Homix - Installer Script
 # This script sets up the edge server with minimal configuration
 
 set -e
@@ -15,15 +15,15 @@ NC='\033[0m' # No Color
 # ASCII Art Banner
 echo -e "${BLUE}"
 cat << "EOF"
- _   _                   
-| \ | | _____   ____ _   
-|  \| |/ _ \ \ / / _` |  
-| |\  | (_) \ V / (_| |  
-|_| \_|\___/ \_/ \__,_|  
-                         
+ _   _                 _      
+| | | | ___  _ __ ___ (_)_  __
+| |_| |/ _ \| '_ ` _ \| \ \/ /
+|  _  | (_) | | | | | | |>  < 
+|_| |_|\___/|_| |_| |_|_/_/\_\
+                              
 EOF
 echo -e "${NC}"
-echo "Welcome to Nova Setup!"
+echo "Welcome to Homix Setup!"
 echo "======================================"
 echo
 
@@ -131,7 +131,7 @@ configure_home() {
 setup_directories() {
     echo "Setting up directories..."
     
-    INSTALL_DIR="$HOME/nova"
+    INSTALL_DIR="$HOME/homix"
     mkdir -p "$INSTALL_DIR/data"
     mkdir -p "$INSTALL_DIR/config"
     
@@ -148,8 +148,8 @@ version: '3.8'
 
 services:
   edge:
-    image: ghcr.io/calmera/nova-edge:latest
-    container_name: nova-edge
+    image: ghcr.io/calmera/homix-edge:latest
+    container_name: homix-edge
     restart: unless-stopped
     network_mode: host
     
@@ -189,8 +189,8 @@ create_helpers() {
 #!/bin/bash
 cd "$(dirname "$0")"
 docker compose up -d
-echo "Nova Edge started!"
-echo "View logs: docker logs -f nova-edge"
+echo "Homix Edge started!"
+echo "View logs: docker logs -f homix-edge"
 EOF
     chmod +x "$INSTALL_DIR/start.sh"
     
@@ -199,7 +199,7 @@ EOF
 #!/bin/bash
 cd "$(dirname "$0")"
 docker compose down
-echo "Nova Edge stopped!"
+echo "Homix Edge stopped!"
 EOF
     chmod +x "$INSTALL_DIR/stop.sh"
     
@@ -209,14 +209,14 @@ EOF
 cd "$(dirname "$0")"
 docker compose pull
 docker compose up -d
-echo "Nova Edge updated!"
+echo "Homix Edge updated!"
 EOF
     chmod +x "$INSTALL_DIR/update.sh"
     
     # Logs script
     cat > "$INSTALL_DIR/logs.sh" << 'EOF'
 #!/bin/bash
-docker logs -f nova-edge
+docker logs -f homix-edge
 EOF
     chmod +x "$INSTALL_DIR/logs.sh"
     
@@ -226,7 +226,7 @@ EOF
 
 # Start the edge server
 start_edge() {
-    echo "Starting Nova Edge..."
+    echo "Starting Homix Edge..."
     
     cd "$INSTALL_DIR"
     $CONTAINER_TOOL compose up -d
@@ -235,11 +235,11 @@ start_edge() {
     sleep 5
     
     # Check if running
-    if $CONTAINER_TOOL ps | grep -q nova-edge; then
+    if $CONTAINER_TOOL ps | grep -q homix-edge; then
         echo -e "${GREEN}✓${NC} Edge server started successfully!"
     else
         echo -e "${RED}❌ Failed to start edge server${NC}"
-        echo "Check logs: $CONTAINER_TOOL logs nova-edge"
+        echo "Check logs: $CONTAINER_TOOL logs homix-edge"
         exit 1
     fi
     
@@ -257,7 +257,7 @@ print_success() {
     echo "Your home automation system is now running!"
     echo
     echo -e "${BLUE}Next steps:${NC}"
-    echo "1. Open https://nova.cloud in your browser"
+    echo "1. Open https://app.homix.dev in your browser"
     echo "2. Log in with your Synadia Cloud account"
     echo "3. Your home '$HOME_NAME' should appear automatically"
     echo
@@ -268,9 +268,9 @@ print_success() {
     echo "  Update:     $INSTALL_DIR/update.sh"
     echo
     echo -e "${BLUE}Add your first device:${NC}"
-    echo "  ESPHome:    https://docs.nova.sh/devices/esphome"
-    echo "  Zigbee:     https://docs.nova.sh/devices/zigbee"
-    echo "  MQTT:       https://docs.nova.sh/devices/mqtt"
+    echo "  ESPHome:    https://docs.homix.dev/devices/esphome"
+    echo "  Zigbee:     https://docs.homix.dev/devices/zigbee"
+    echo "  MQTT:       https://docs.homix.dev/devices/mqtt"
     echo
     echo "Happy automating! 🏠🤖"
 }

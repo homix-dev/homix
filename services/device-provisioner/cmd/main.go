@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/calmera/nats-home-automation/services/device-provisioner/internal/provisioner"
+	"github.com/calmera/homix/services/device-provisioner/internal/provisioner"
 	"github.com/nats-io/nats.go"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"

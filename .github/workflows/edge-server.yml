@@ -21,7 +21,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/nova-edge
+  IMAGE_NAME: ${{ github.repository_owner }}/homix-edge
 
 jobs:
   test:

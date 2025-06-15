@@ -1,68 +1,68 @@
-# Nova Brand Guidelines 🌟
+# Homix Brand Guidelines 🏠
 
 ## Name & Tagline
-- **Product Name**: Nova
-- **Tagline**: "Home automation that shines"
+- **Product Name**: Homix
+- **Tagline**: "Home automation, beautifully mixed"
 - **Alternative**: "Brilliantly simple home automation"
 
 ## Product Family
-- **Nova** - The complete platform
-- **Nova Edge** - Local edge server running in homes
-- **Nova Cloud** - Cloud management interface
-- **Nova Hub** - Alternative name for edge server
-- **Nova Spark** - Device simulator/testing tools
+- **Homix** - The complete platform
+- **Homix Edge** - Local edge server running in homes
+- **Homix Cloud** - Cloud management interface
+- **Homix Hub** - Alternative name for edge server
+- **Homix Spark** - Device simulator/testing tools
 
 ## Visual Identity
-- **Primary Symbol**: 🌟 (glowing star emoji)
-- **Secondary Symbol**: ⭐ (star emoji)
+- **Primary Symbol**: 🏠 (house emoji)
+- **Secondary Symbol**: 🏡 (house with garden emoji)
 - **Color Palette** (suggested):
   - Primary: Deep Blue (#1E3A8A)
-  - Accent: Bright Yellow/Gold (#FCD34D)
+  - Accent: Warm Orange (#FB923C)
   - Supporting: White, Dark Gray
   
 ## Writing Style
 - **Voice**: Professional yet approachable
 - **Tone**: Confident, helpful, innovative
 - **Key Messages**:
-  - "Every device is a star in your Nova constellation"
-  - "Nova brings brilliance to home automation"
-  - "Shine brighter with Nova"
+  - "Mix and match your perfect home automation"
+  - "Homix brings harmony to home automation"
+  - "Your home, beautifully mixed"
 
 ## Technical Naming
-- **Binary**: `nova-edge`
-- **CLI Tool**: `nova`
+- **Binary**: `homix-edge`
+- **CLI Tool**: `homix`
 - **Docker Images**: 
-  - `ghcr.io/calmera/nova-edge`
-  - `ghcr.io/calmera/nova-simulator`
-- **Go Module**: `github.com/calmera/nova`
-- **Config Files**: `nova.yaml`, `nova.conf`
+  - `ghcr.io/calmera/homix-edge`
+  - `ghcr.io/calmera/homix-simulator`
+- **Go Module**: `github.com/calmera/homix`
+- **Config Files**: `homix.yaml`, `homix.conf`
 
 ## URLs & Domains
-- **Main Website**: `nova.sh`
-- **Documentation**: `docs.nova.sh`
-- **Cloud App**: `nova.cloud` or `app.nova.sh`
-- **Installer**: `get.nova.sh`
-- **API**: `api.nova.cloud`
+- **Main Website**: `homix.dev`
+- **Documentation**: `docs.homix.dev`
+- **Cloud App**: `app.homix.dev` or `cloud.homix.dev`
+- **Installer**: `get.homix.dev`
+- **API**: `api.homix.dev`
 
 ## Usage Guidelines
-1. Always capitalize "Nova" when referring to the product
-2. Use "Nova Edge" not "Nova edge" or "nova-edge" in documentation
-3. The star emoji 🌟 can be used in headers and key messaging
-4. When referring to multiple installations: "Nova constellation"
-5. For possessive: "Nova's" not "Novas'"
+1. Always capitalize "Homix" when referring to the product
+2. Use "Homix Edge" not "Homix edge" or "homix-edge" in documentation
+3. The house emoji 🏠 can be used in headers and key messaging
+4. When referring to multiple installations: "Homix network"
+5. For possessive: "Homix's" not "Homixes'"
 
 ## Attribution
 - Always acknowledge NATS as the underlying technology
-- Example: "Nova - Built on NATS for ultimate reliability"
-- In technical docs: "Nova leverages NATS messaging"
+- Example: "Homix - Built on NATS for ultimate reliability"
+- In technical docs: "Homix leverages NATS messaging"
 
 ## Examples
 ✅ **Correct**: 
-- "Deploy Nova Edge in your home"
-- "Nova Cloud manages your entire constellation"
-- "Get started with Nova in 5 minutes"
+- "Deploy Homix Edge in your home"
+- "Homix Cloud manages your entire network"
+- "Get started with Homix in 5 minutes"
 
 ❌ **Incorrect**:
-- "Deploy nova edge" (not capitalized)
-- "NOVA Home Automation" (not all caps)
-- "Nova Home" (we dropped "Home" from the name)
+- "Deploy homix edge" (not capitalized)
+- "HOMIX Home Automation" (not all caps)
+- "Homix Home" (we dropped "Home" from the name)

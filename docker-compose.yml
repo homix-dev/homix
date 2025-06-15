@@ -1,12 +1,12 @@
-# Nova - Edge Server
+# Homix - Edge Server
 # The ONLY container you need to run at home!
 
 version: '3.8'
 
 services:
   edge:
-    image: ghcr.io/calmera/nova-edge:latest
-    container_name: nova-edge
+    image: ghcr.io/calmera/homix-edge:latest
+    container_name: homix-edge
     restart: unless-stopped
     network_mode: host  # Required for device discovery
     

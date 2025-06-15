@@ -1,4 +1,4 @@
-# Nova - Quick Start Guide
+# Homix - Quick Start Guide
 
 > Get your home automation system running in 5 minutes with Synadia Cloud!
 
@@ -11,25 +11,25 @@
 
 1. **Sign up** at [app.ngs.global](https://app.ngs.global)
 2. **Create a context** called "home"
-3. **Download credentials** → Save as `nova.creds`
+3. **Download credentials** → Save as `homix.creds`
 
 ## Step 2: Start Your Home Edge Server (1 minute)
 
 ```bash
 # Download and run the edge server
 docker run -d \
-  --name nova-edge \
+  --name homix-edge \
   --network host \
-  -v ~/nova.creds:/creds/cloud.creds:ro \
+  -v ~/homix.creds:/creds/cloud.creds:ro \
   -e HOME_NAME="My Home" \
-  ghcr.io/calmera/nova-edge:latest
+  ghcr.io/calmera/homix-edge:latest
 ```
 
 That's it! Your home is now connected to the cloud.
 
 ## Step 3: Access the Management UI (30 seconds)
 
-Open [nova.cloud](https://nova.cloud) and log in with your Synadia credentials.
+Open [app.homix.dev](https://app.homix.dev) and log in with your Synadia credentials.
 
 You'll see your home appear automatically!
 
@@ -43,13 +43,13 @@ docker run -d \
   --network host \
   -e DEVICE_ID=light-001 \
   -e DEVICE_NAME="Test Light" \
-  ghcr.io/calmera/nova-device-simulator:latest
+  ghcr.io/calmera/homix-device-simulator:latest
 ```
 
 ### Option B: Real ESP32 Device
 ```bash
 # Download device firmware
-curl -L https://get.nova.sh/esp32 -o device.bin
+curl -L https://get.homix.dev/esp32 -o device.bin
 
 # Flash to your ESP32
 esptool.py write_flash 0x0 device.bin
@@ -106,29 +106,29 @@ The automation runs locally on your edge server - no cloud dependency!
 ### Edge server won't connect
 ```bash
 # Check logs
-docker logs nova-edge
+docker logs homix-edge
 
 # Test credentials
-nats --server tls://connect.ngs.global --creds ~/nova.creds pub home.test.connection "test-$(date +%s)"
+nats --server tls://connect.ngs.global --creds ~/homix.creds pub home.test.connection "test-$(date +%s)"
 ```
 
 ### Devices not appearing
 ```bash
 # Check device discovery
-docker exec nova-edge nova devices list
+docker exec homix-edge homix devices list
 
 # Monitor device announcements
-docker exec nova-edge nats sub "home.devices.*.announce"
+docker exec homix-edge nats sub "home.devices.*.announce"
 ```
 
 ### Need help?
-- 📚 [Full Documentation](https://docs.nova.sh)
-- 💬 [Discord Community](https://discord.gg/nova)
-- 🐛 [Report Issues](https://github.com/calmera/nova/issues)
+- 📚 [Full Documentation](https://docs.homix.dev)
+- 💬 [Discord Community](https://discord.gg/homix)
+- 🐛 [Report Issues](https://github.com/calmera/homix/issues)
 
 ---
 
-**Why Nova?**
+**Why Homix?**
 - 🔒 **Secure**: Per-device credentials, no shared passwords
 - 🏠 **Local First**: Automations run at home, work offline
 - ☁️ **Cloud Managed**: Configure from anywhere

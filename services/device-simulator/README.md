@@ -1,6 +1,6 @@
-# Nova Device Simulator
+# Homix Device Simulator
 
-A web-based device simulator for testing Nova home automation without physical hardware.
+A web-based device simulator for testing Homix home automation without physical hardware.
 
 ## Features
 
@@ -28,10 +28,10 @@ go run main.go
 ### Docker
 ```bash
 # Build image
-docker build -t nova-device-simulator .
+docker build -t homix-device-simulator .
 
 # Run container
-docker run -p 8083:8083 -e NATS_URL=nats://home:changeme@localhost:4222 nova-device-simulator
+docker run -p 8083:8083 -e NATS_URL=nats://home:changeme@localhost:4222 homix-device-simulator
 ```
 
 ## Usage

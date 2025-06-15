@@ -1,10 +1,10 @@
-# Nova 🌟
+# Homix 🏠
 
-> Home automation that shines - secure, reliable, and brilliantly simple.
+> Home automation, beautifully mixed - secure, reliable, and brilliantly simple.
 
-[![GitHub](https://img.shields.io/github/license/calmera/nova)](LICENSE)
-[![Docker](https://img.shields.io/docker/pulls/calmera/nova-edge)](https://hub.docker.com/r/calmera/nova-edge)
-[![Discord](https://img.shields.io/discord/123456789)](https://discord.gg/nova)
+[![GitHub](https://img.shields.io/github/license/calmera/homix)](LICENSE)
+[![Docker](https://img.shields.io/docker/pulls/calmera/homix-edge)](https://hub.docker.com/r/calmera/homix-edge)
+[![Discord](https://img.shields.io/discord/123456789)](https://discord.gg/homix)
 
 ## 🚀 Get Started in 5 Minutes
 
@@ -15,12 +15,12 @@
 
 2. **Run the installer**
    ```bash
-   curl -sSL https://get.nova.sh | sh
+   curl -sSL https://get.homix.dev | sh
    ```
 
 3. **Access the UI**
    ```
-   https://nova.cloud
+   https://app.homix.dev
    ```
 
 That's it! Your home automation system is running.
@@ -114,7 +114,7 @@ docker run -d \
   --network host \
   -v ~/nats-home.creds:/creds/cloud.creds:ro \
   -e HOME_NAME="My Home" \
-  ghcr.io/calmera/nats-home-edge:latest
+  ghcr.io/calmera/homix-edge:latest
 ```
 
 ### Development

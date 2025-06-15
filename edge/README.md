@@ -1,4 +1,4 @@
-# Nova Edge Server
+# Homix Edge Server
 
 The edge server is the heart of your home automation system. It runs locally in your home and handles all device communication, automation execution, and cloud synchronization.
 
@@ -16,27 +16,27 @@ The edge server is a single Go binary that combines:
 
 ```bash
 docker run -d \
-  --name nova-edge \
+  --name homix-edge \
   --network host \
   -v ~/.synadia/NGS-Home.creds:/creds/cloud.creds:ro \
   -e HOME_NAME="My Home" \
-  ghcr.io/calmera/nova-edge:latest
+  ghcr.io/calmera/homix-edge:latest
 ```
 
 ### Building from Source
 
 ```bash
 # Clone repository
-git clone https://github.com/calmera/nova
-cd nova/edge
+git clone https://github.com/calmera/homix
+cd homix/edge
 
 # Build
-go build -o nova-edge ./cmd/edge
+go build -o homix-edge ./cmd/edge
 
 # Run
 SYNADIA_CREDS=~/.synadia/NGS-Home.creds \
 HOME_NAME="My Home" \
-./nova-edge
+./homix-edge
 ```
 
 ## Configuration
@@ -230,7 +230,7 @@ curl http://localhost:8222/leafz
 
 Enable debug logs:
 ```bash
-LOG_LEVEL=debug ./nova-edge
+LOG_LEVEL=debug ./homix-edge
 ```
 
 ### Common Issues

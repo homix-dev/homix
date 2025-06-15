@@ -1,7 +1,7 @@
 # Cloud-First Refactoring Plan
 
 ## Vision
-Transform Nova into a cloud-first system where:
+Transform Homix into a cloud-first system where:
 - **Management happens in Synadia Cloud** (UI, configuration, monitoring)
 - **Execution happens at home** (automations, device control via leaf nodes)
 - **Security is paramount** (per-device JWT credentials, no shared secrets)

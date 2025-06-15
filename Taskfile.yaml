@@ -1,11 +1,11 @@
 version: '3'
 
-# Cloud-First Nova Tasks
+# Cloud-First Homix Tasks
 # Simple tasks for the new architecture
 
 vars:
   CONTAINER_TOOL: '{{default "docker" .CONTAINER_TOOL}}'
-  EDGE_IMAGE: ghcr.io/calmera/nova-edge:latest
+  EDGE_IMAGE: ghcr.io/calmera/homix-edge:latest
 
 tasks:
   default:

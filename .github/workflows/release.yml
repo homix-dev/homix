@@ -59,12 +59,12 @@ jobs:
           echo "" >> CHANGELOG.md
           echo "### Edge Server (Required)" >> CHANGELOG.md
           echo "\`\`\`bash" >> CHANGELOG.md
-          echo "ghcr.io/${{ github.repository_owner }}/nova-edge:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
+          echo "ghcr.io/${{ github.repository_owner }}/homix-edge:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
           echo "\`\`\`" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### Device Simulator (Optional)" >> CHANGELOG.md
           echo "\`\`\`bash" >> CHANGELOG.md
-          echo "ghcr.io/${{ github.repository_owner }}/nova-device-simulator:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
+          echo "ghcr.io/${{ github.repository_owner }}/homix-device-simulator:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
           echo "\`\`\`" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "## 🚀 Quick Start" >> CHANGELOG.md
@@ -74,21 +74,21 @@ jobs:
           echo "" >> CHANGELOG.md
           echo "### 2. Run the installer" >> CHANGELOG.md
           echo "\`\`\`bash" >> CHANGELOG.md
-          echo "curl -sSL https://get.nova.sh | sh" >> CHANGELOG.md
+          echo "curl -sSL https://get.homix.dev | sh" >> CHANGELOG.md
           echo "\`\`\`" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### 3. Or run manually with Docker" >> CHANGELOG.md
           echo "\`\`\`bash" >> CHANGELOG.md
           echo "docker run -d \\\\" >> CHANGELOG.md
-          echo "  --name nova-edge \\\\" >> CHANGELOG.md
+          echo "  --name homix-edge \\\\" >> CHANGELOG.md
           echo "  --network host \\\\" >> CHANGELOG.md
           echo "  -v ~/.synadia/NGS-Home.creds:/creds/cloud.creds:ro \\\\" >> CHANGELOG.md
           echo "  -e HOME_NAME=\"My Home\" \\\\" >> CHANGELOG.md
-          echo "  ghcr.io/${{ github.repository_owner }}/nova-edge:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
+          echo "  ghcr.io/${{ github.repository_owner }}/homix-edge:${GITHUB_REF_NAME#refs/tags/}" >> CHANGELOG.md
           echo "\`\`\`" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### 4. Access the UI" >> CHANGELOG.md
-          echo "Visit [nova.cloud](https://nova.cloud) to manage your home automation system." >> CHANGELOG.md
+          echo "Visit [app.homix.dev](https://app.homix.dev) to manage your home automation system." >> CHANGELOG.md
           
           # Store tag for later steps
           echo "tag=${GITHUB_REF_NAME#refs/tags/}" >> $GITHUB_ENV
@@ -106,7 +106,7 @@ jobs:
       - name: Update docker-compose.yml
         run: |
           # Update the edge server image tag in docker-compose.yml
-          sed -i "s|ghcr.io/${{ github.repository_owner }}/nova-edge:latest|ghcr.io/${{ github.repository_owner }}/nova-edge:${{ env.tag }}|g" docker-compose.yml
+          sed -i "s|ghcr.io/${{ github.repository_owner }}/homix-edge:latest|ghcr.io/${{ github.repository_owner }}/homix-edge:${{ env.tag }}|g" docker-compose.yml
           
           # Create a release-specific compose file
           cp docker-compose.yml docker-compose-${{ env.tag }}.yml

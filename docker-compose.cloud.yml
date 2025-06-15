@@ -1,0 +1,60 @@
+# Docker Compose override for cloud-connected deployment
+services:
+  nats:
+    volumes:
+      - ./infrastructure/nats-server-cloud.conf:/etc/nats/nats-server.conf:ro
+      - ./jwt:/data/jwt:ro
+      - ./creds:/creds:ro
+    environment:
+      - NATS_SERVER_NAME=home-${HOME_ID:-default}
+      - JETSTREAM_DOMAIN=home-${HOME_ID:-default}
+      - LEAF_ACCOUNT=HOME
+
+  discovery:
+    volumes:
+      - ./creds/discovery-service.creds:/app/nats.creds:ro
+    environment:
+      - NATS_URL=nats://nats:4222
+      - NATS_CREDS=/app/nats.creds
+    command: ["./discovery", "--nats-url", "nats://nats:4222", "--creds", "/app/nats.creds"]
+
+  management-ui:
+    volumes:
+      - ./creds/management-ui.creds:/app/nats.creds:ro
+    environment:
+      - NATS_URL=nats://nats:4222
+      - NATS_CREDS=/app/nats.creds
+    command: ["./management-ui", "--nats-url", "nats://nats:4222", "--creds", "/app/nats.creds", "--http-addr", ":8081"]
+
+  health-monitor:
+    image: ${HEALTH_MONITOR_IMAGE:-nats-health-monitor:latest}
+    build:
+      context: ./services/health-monitor
+      dockerfile: Dockerfile
+    volumes:
+      - ./creds/health-monitor.creds:/app/nats.creds:ro
+    environment:
+      - NATS_URL=nats://nats:4222
+      - NATS_CREDS=/app/nats.creds
+    command: ["./health-monitor", "--nats-url", "nats://nats:4222", "--creds", "/app/nats.creds", "--http-addr", ":8082"]
+
+  # Device provisioner service
+  device-provisioner:
+    image: ${PROVISIONER_IMAGE:-nats-device-provisioner:latest}
+    build:
+      context: ./services/device-provisioner
+      dockerfile: Dockerfile
+    container_name: nats-device-provisioner
+    depends_on:
+      - nats
+    volumes:
+      - ./creds/device-provisioner.creds:/app/nats.creds:ro
+    environment:
+      - NATS_URL=nats://nats:4222
+      - NATS_CREDS=/app/nats.creds
+      - SIGNING_KEY=${SIGNING_KEY}
+      - ACCOUNT_PUB=${ACCOUNT_PUB}
+    command: ["./device-provisioner", "--nats-url", "nats://nats:4222", "--creds", "/app/nats.creds"]
+    restart: unless-stopped
+    networks:
+      - nats-network

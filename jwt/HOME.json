@@ -1,0 +1,35 @@
+{
+ "iat": 1749971776,
+ "iss": "OCCIPPFFV7XTD3WEJ4FAMJ4YIJCKTG6DNIMNV4ZQG63TXVF2BVXZWGTC",
+ "jti": "4M2REL7QC44BXPBFFHRB2B3XOLXDUAOQFONXNEJU6AHFSLYVGTQA",
+ "name": "HOME",
+ "nats": {
+  "authorization": {},
+  "default_permissions": {
+   "pub": {},
+   "sub": {}
+  },
+  "limits": {
+   "conn": -1,
+   "consumer": -1,
+   "data": -1,
+   "disk_max_stream_bytes": -1,
+   "exports": -1,
+   "imports": -1,
+   "leaf": -1,
+   "max_ack_pending": -1,
+   "mem_max_stream_bytes": -1,
+   "payload": -1,
+   "streams": -1,
+   "subs": -1,
+   "wildcards": true
+  },
+  "signing_keys": [
+   "AALXKXVXA22WF4LNCN2CJQTE2K5LTYLBCPBGQNVA7JK35FOSJRQA4V55"
+  ],
+  "type": "account",
+  "version": 2
+ },
+ "sub": "AABHPQLOO7HSKJOPASQQF5EH6LT4NEXCLXIBIYCBHEM6RFTJ3GQEDGNN"
+}
+

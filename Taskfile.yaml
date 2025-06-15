@@ -155,6 +155,28 @@ tasks:
       # - task: cleanup:wait-healthy
       # - task: cleanup:show-status
 
+  up:cloud:
+    desc: Start services with JWT authentication (cloud-ready mode)
+    cmds:
+      - |
+        if [ ! -f .env ]; then
+          cp .env.example .env
+          echo "Created .env file from template"
+        fi
+      - |
+        if [ ! -f creds/management-ui.creds ]; then
+          echo "⚠️  JWT credentials not found. Run setup first:"
+          echo "   cd infrastructure && ./setup-synadia-cloud.sh"
+          exit 1
+        fi
+      - echo "Starting services with JWT auth using {{.CONTAINER_TOOL}}..."
+      - '{{.CONTAINER_TOOL}} compose -f docker-compose.yml -f docker-compose.cloud.yml up -d'
+      - |
+        echo ""
+        echo "✅ Services started with JWT authentication!"
+        echo ""
+        echo "Test with: nats --creds creds/management-ui.creds pub test hello"
+
   up:nats:
     desc: Start only NATS server in container (avoids build issues)
     cmds:

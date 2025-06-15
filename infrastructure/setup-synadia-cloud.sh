@@ -37,14 +37,29 @@ init_local_operator() {
     echo
     echo "Initializing local operator for development..."
     
-    # Create operator
-    nsc add operator --name "HomeAutomation" --sys
+    # Check if operator exists
+    if nsc describe operator HomeAutomation &> /dev/null; then
+        echo "Operator 'HomeAutomation' already exists, using existing..."
+    else
+        # Create operator
+        nsc add operator --name "HomeAutomation" --sys
+    fi
     
-    # Create main account
-    nsc add account --name "HOME"
+    # Set as default
+    nsc env -o HomeAutomation
     
-    # Create signing key for the account (for device provisioning)
-    nsc edit account HOME --sk generate
+    # Check if account exists
+    if nsc describe account HOME &> /dev/null; then
+        echo "Account 'HOME' already exists, using existing..."
+    else
+        # Create main account
+        nsc add account --name "HOME"
+    fi
+    
+    # Generate signing key if it doesn't exist
+    if ! nsc describe account HOME | grep -q "Signing Keys"; then
+        nsc edit account HOME --sk generate
+    fi
     
     echo -e "${GREEN}✓ Local operator initialized${NC}"
 }
@@ -55,19 +70,35 @@ create_service_users() {
     echo "Creating service users..."
     
     # Management UI user
-    nsc add user --account HOME --name management-ui
+    if ! nsc describe user --account HOME management-ui &> /dev/null; then
+        nsc add user --account HOME --name management-ui
+    else
+        echo "User 'management-ui' already exists"
+    fi
     
     # Discovery service user  
-    nsc add user --account HOME --name discovery-service
+    if ! nsc describe user --account HOME discovery-service &> /dev/null; then
+        nsc add user --account HOME --name discovery-service
+    else
+        echo "User 'discovery-service' already exists"
+    fi
     
     # Health monitor user
-    nsc add user --account HOME --name health-monitor
+    if ! nsc describe user --account HOME health-monitor &> /dev/null; then
+        nsc add user --account HOME --name health-monitor
+    else
+        echo "User 'health-monitor' already exists"
+    fi
     
     # Device provisioning service user (has ability to create new users)
-    nsc add user --account HOME --name device-provisioner \
-        --allow-pub "home.provisioning.>" \
-        --allow-sub "home.provisioning.>" \
-        --allow-pub-response
+    if ! nsc describe user --account HOME device-provisioner &> /dev/null; then
+        nsc add user --account HOME --name device-provisioner \
+            --allow-pub "home.provisioning.>" \
+            --allow-sub "home.provisioning.>" \
+            --allow-pub-response
+    else
+        echo "User 'device-provisioner' already exists"
+    fi
     
     echo -e "${GREEN}✓ Service users created${NC}"
 }
@@ -78,17 +109,25 @@ create_device_credentials() {
     echo "Creating sample device credentials..."
     
     # Create a few sample device users
-    nsc add user --account HOME --name device-light-001 \
-        --allow-pub "home.devices.light.001.>" \
-        --allow-sub "home.devices.light.001.>" \
-        --allow-pub "\$JS.API.CONSUMER.MSG.NEXT.>" \
-        --allow-sub "_INBOX.>"
+    if ! nsc describe user --account HOME device-light-001 &> /dev/null; then
+        nsc add user --account HOME --name device-light-001 \
+            --allow-pub "home.devices.light.001.>" \
+            --allow-sub "home.devices.light.001.>" \
+            --allow-pub "\$JS.API.CONSUMER.MSG.NEXT.>" \
+            --allow-sub "_INBOX.>"
+    else
+        echo "User 'device-light-001' already exists"
+    fi
         
-    nsc add user --account HOME --name device-sensor-001 \
-        --allow-pub "home.devices.sensor.001.>" \
-        --allow-sub "home.devices.sensor.001.>" \
-        --allow-pub "\$JS.API.CONSUMER.MSG.NEXT.>" \
-        --allow-sub "_INBOX.>"
+    if ! nsc describe user --account HOME device-sensor-001 &> /dev/null; then
+        nsc add user --account HOME --name device-sensor-001 \
+            --allow-pub "home.devices.sensor.001.>" \
+            --allow-sub "home.devices.sensor.001.>" \
+            --allow-pub "\$JS.API.CONSUMER.MSG.NEXT.>" \
+            --allow-sub "_INBOX.>"
+    else
+        echo "User 'device-sensor-001' already exists"
+    fi
     
     echo -e "${GREEN}✓ Sample device credentials created${NC}"
 }
@@ -138,10 +177,9 @@ create_compose_override() {
     echo
     echo "Creating docker-compose override..."
     
-    cat > docker-compose.cloud.yml << 'EOF'
+    # Create in the parent directory (project root)
+    cat > ../docker-compose.cloud.yml << 'EOF'
 # Docker Compose override for cloud-connected deployment
-version: '3.8'
-
 services:
   nats:
     volumes:
@@ -170,12 +208,37 @@ services:
     command: ["./management-ui", "--nats-url", "nats://nats:4222", "--creds", "/app/nats.creds", "--http-addr", ":8081"]
 
   health-monitor:
+    image: ${HEALTH_MONITOR_IMAGE:-nats-health-monitor:latest}
+    build:
+      context: ./services/health-monitor
+      dockerfile: Dockerfile
     volumes:
       - ./infrastructure/creds/health-monitor.creds:/app/nats.creds:ro
     environment:
       - NATS_URL=nats://nats:4222
       - NATS_CREDS=/app/nats.creds
     command: ["./health-monitor", "--nats-url", "nats://nats:4222", "--creds", "/app/nats.creds", "--http-addr", ":8082"]
+
+  # Device provisioner service
+  device-provisioner:
+    image: ${PROVISIONER_IMAGE:-nats-device-provisioner:latest}
+    build:
+      context: ./services/device-provisioner
+      dockerfile: Dockerfile
+    container_name: nats-device-provisioner
+    depends_on:
+      - nats
+    volumes:
+      - ./infrastructure/creds/device-provisioner.creds:/app/nats.creds:ro
+    environment:
+      - NATS_URL=nats://nats:4222
+      - NATS_CREDS=/app/nats.creds
+      - SIGNING_KEY=${SIGNING_KEY}
+      - ACCOUNT_PUB=${ACCOUNT_PUB}
+    command: ["./device-provisioner", "--nats-url", "nats://nats:4222", "--creds", "/app/nats.creds"]
+    restart: unless-stopped
+    networks:
+      - nats-network
 EOF
 
     echo -e "${GREEN}✓ Docker compose override created${NC}"
